@@ -14,7 +14,7 @@ pip install requirements.txt
 * Download imdb dataset [here](http://ai.stanford.edu/~amaas/data/sentiment/) and put it to ``data/imdb``
 * Download bdek dataset(i.e. amazon reviews dataset) [here](https://github.com/yftah89/Neural-SCL-Domain-Adaptation/tree/master/data) and put it to ``data/bdek``
 
-##Run
+## Run
 
 * run ``sh train_script.sh`` in shell
   * open this file and you'll see different commands for different tasks
