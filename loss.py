@@ -1,0 +1,80 @@
+import torch
+
+# cross_entropy_loss = torch.nn.CrossEntropyLoss(reduction='mean')
+
+
+'''
+copy from invariant rationalization
+'''
+def cal_sparsity_loss(z, mask, level):
+    """
+    Exact sparsity loss in a batchwise sense. 
+    Inputs: 
+        z -- (batch_size, sequence_length)
+        mask -- (batch_size, seq_length)
+        level -- sparsity level
+    """
+    sparsity = torch.sum(z) / torch.sum(mask)
+    return torch.abs(sparsity - level)
+
+'''
+copy from invariant rationalization
+'''
+def cal_continuity_loss(z):
+    """
+    Compute the continuity loss.
+    Inputs:     
+        z -- (batch_size, sequence_length)
+    """
+    return torch.mean(torch.abs(z[:, 1:] - z[:, :-1]))
+
+class causal_inference_loss(torch.nn.Module):
+	def __init__(self, args):
+		super(causal_inference_loss, self).__init__()
+		self.criterion = torch.nn.CrossEntropyLoss(reduction='mean')
+		self.sparsity_loss = cal_sparsity_loss
+		self.continuity_loss = cal_continuity_loss
+		self.sparsity_percentage = args.sparsity_percentage
+
+	def forward(self, sentim, env_enable_sentim, sentim_label, rationale_mask, padding_mask):
+		# print(sentim.shape)
+		# print(sentim_label.shape)
+		# print(sentim_label.dtype)
+		# print(sentim.dtype)
+		sentim_loss = self.criterion(sentim, sentim_label)
+		env_enable_sentim_loss = self.criterion(env_enable_sentim, sentim_label)
+		sparsity_loss = self.sparsity_loss(rationale_mask[:,:,1], padding_mask, self.sparsity_percentage)
+		continuity_loss = self.continuity_loss(rationale_mask[:,:,1])
+		extractor_loss = torch.nn.functional.relu(sentim_loss - env_enable_sentim_loss) + sentim_loss + sparsity_loss + continuity_loss
+
+		return extractor_loss, sentim_loss, env_enable_sentim_loss
+
+
+class sentim_loss(torch.nn.Module):
+	def __init__(self, args):
+		super(sentim_loss, self).__init__()
+		self.softmax = torch.nn.LogSoftmax(dim=-1)
+		self.criterion = torch.nn.NLLLoss()
+
+	def forward(self, logits, labels):
+		# softmax_logits = self.softmax(logits)
+		loss = self.criterion(self.softmax(logits.view(-1,2)),labels.view(-1))
+		return loss
+
+
+class cross_entropy_loss(torch.nn.Module):
+	def __init__(self):
+		super(cross_entropy_loss, self).__init__()
+		self.criterion = torch.nn.CrossEntropyLoss(reduction='mean')
+
+	def forward(self, pred, labels):
+		loss = self.criterion(pred, labels)
+
+
+		return loss
+
+
+loss_factory = {
+	'causal': causal_inference_loss,
+	'sentim': sentim_loss
+}

@@ -18,8 +18,8 @@ class gpt2_tokenizer(object):
 			vocab_bpe_path = cached_path(vocab)
 			with open(vocab_bpe_path, 'r', encoding="utf-8") as f:
 				bpe_data = f.read()
-				print('wrapper_tokenizer vocab')
-				print(bpe_data.split('\n')[1].encode('utf-8'))
+				# print('wrapper_tokenizer vocab')
+				# print(bpe_data.split('\n')[1].encode('utf-8'))
 				# bpe_merges is list of (word, number)
 				bpe_merges = [tuple(merge_str.split()) for merge_str in bpe_data.split('\n')[1:-1]]
 		# vocab is dictionary
@@ -57,11 +57,12 @@ class gpt2_tokenizer(object):
 			return bytearray([self.bpe.byte_decoder[c] for c in string]).decode('utf-8', errors=self.bpe.errors)
 		# print('wt')
 		# print(x)
-		text = [self.bpe.decoder.get(token, token) for token in self.bpe.encode(x)]
-		text = [convert(token) for token in text]
-		# print('wt')
-		# print(text)
-		return text
+		# text = [self.bpe.decoder.get(token, token) for token in self.bpe.encode(x)]
+		# text = [convert(token) for token in text]
+		# # print('wt')
+		# # print(text)
+		# return text
+		return x.split(' ')
 
 	def is_beginning_of_word(self, x: str) -> bool:
 		return self.decode(x).startswith(' ')

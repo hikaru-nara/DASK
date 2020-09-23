@@ -9,10 +9,60 @@ import operator
 import re
 import xml.etree.ElementTree as ET
 
+from utils.utils import pollute_data
+
 import torch
+import csv
 
-reader_factory = {'bdek':bdek_reader}
+class imdb_reader(object):
+    '''
+    @ Tian Li
+    '''
+    def __init__(self, pollution_rate):
+        self.text_path = {'train':'data/imdb/train.tsv', 'dev':'data/imdb/dev.tsv'}
+        self.pollution_rate = pollution_rate
 
+    def read_data(self):
+        train_data= {}
+        dev_data = {}
+        train_data['text'], train_data['label'] = self.get_examples(self.text_path['train'])
+        dev_data['text'], dev_data['label'] = self.get_examples(self.text_path['dev'])
+
+        train_data['text'], train_data['aug'] = pollute_data(train_data['text'], train_data['label'], self.pollution_rate)
+        dev_data['text'], dev_data['aug'] = pollute_data(dev_data['text'], dev_data['label'], [1. - r for r in self.pollution_rate])
+
+        return train_data, dev_data
+
+    def get_examples(self, fpath):
+        """
+        Get data from a tsv file.
+        Input:
+            fpath -- the file path.
+        """
+        n = -1
+        ts = []
+        ys = []
+
+        with open(fpath, "r") as f:
+            reader = csv.reader(f, delimiter="\t", quotechar=None)
+            for line in reader:
+                if n < 0:
+                    # the header of the CSV files
+                    n += 1
+                    continue
+
+                t = line[0]
+                y = line[1]
+                # print('imdb/get_examples/label',y)
+                # print('imdb/get_examples/text',t)
+                ts.append(t)
+                ys.append(y)
+
+                n += 1
+
+        print("Number of examples %d" % n)
+        
+        return ts, np.array(ys, dtype=np.float32)
 
 
 class bdek_reader(object):
@@ -24,7 +74,6 @@ class bdek_reader(object):
 
         pass an obj of this class to a da_dataset object defined in ../dataset.py
         '''
-        super(bdek_dataset, self).__init__()
         self.text_paths = {
                     'positive':join('data/amazon-review-old',domain_name,'positive.parsed'),\
                     'negative':join('data/amazon-review-old',domain_name,'negative.parsed'),\
@@ -70,6 +119,10 @@ class bdek_reader(object):
         for review in root.iter('review'):
             sentences.append(review)
         return sentences
+
+
+reader_factory = {'bdek':bdek_reader, 'imdb':imdb_reader}
+
 
 
 
