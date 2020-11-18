@@ -181,7 +181,7 @@ class Causal_Train_Dataset(torch.utils.data.Dataset):
     def __getitem__(self, i):
         # 0 ->i
         datum = {key: value[i] for key, value in self.train_data.items()}
-        datum['text'] = 'I love peking university'
+        # datum['text'] = 'I love peking university'
         if self.kg is None:
             datum = bert_preprocess(datum, self.max_seq_length, self.tokenizer)
         else:
@@ -246,36 +246,53 @@ class Causal_Dataset(object):
         ).astype(np.int32)
 
         test_data = {key: [value[i] for i in test_idx] for key, value in self.dev_data.items()}
-        return Causal_Train_Dataset(self.train_data, self.kg, self.args.max_seq_length), \
-        Causal_Test_Dataset(test_data, self.kg,self.args.max_seq_length)
+        return Causal_Train_Dataset(self.train_data, self.kg, self.args.seq_length), \
+        Causal_Test_Dataset(test_data, self.kg, self.args.seq_length)
 
 
 
 class DA_train_dataset(torch.utils.data.Dataset):
     # incomplete
-    def __init__(self, labeled_data, max_seq_length):
+    def __init__(self, labeled_data, unlabeled_data, max_seq_length, kg):
         super(DA_train_dataset, self).__init__()
         self.labeled_data = labeled_data
+        self.unlabeled_data = unlabeled_data
+        self.len_labeled = len(self.labeled_data['text'])
+        self.len_unlabeled = len(self.unlabeled_data['text'])
         self.max_seq_length = max_seq_length
         self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+        self.kg = kg
         # self.augmenter = augmenter
 
     def __len__(self):
-        return len(self.labeled_data['text'])
+        return max(self.len_labeled, self.len_unlabeled)
 
     def __getitem__(self, i):
-        datum = {k: self.labeled_data[k][i] for k in self.labeled_data.keys()}
-        datum = bert_preprocess(datum, self.max_seq_length, self.tokenizer)
-        return datum
+        assert self.len_labeled<self.len_unlabeled
+        l_ind = i*self.len_labeled/self.len_unlabeled
+
+        labeled_datum = {k: self.labeled_data[k][l_ind] for k in self.labeled_data.keys()}
+        if self.kg is None:
+            labeled_datum = bert_preprocess(labeled_datum, self.max_seq_length, self.tokenizer)
+        else:
+            labeled_datum = kbert_preprocess(labeled_datum, self.max_seq_length, self.kg)
+
+        unlabeled_datum = {k: self.unlabeled_data[k][i] for k in self.unabeled_data.keys()}
+        if self.kg is None:
+            unlabeled_datum = bert_preprocess(lunabeled_datum, self.max_seq_length, self.tokenizer)
+        else:
+            unlabeled_datum = kbert_preprocess(unlabeled_datum, self.max_seq_length, self.kg)
+        return labeled_datum, unlabeled_datum
 
 
 class DA_test_dataset(torch.utils.data.Dataset):
     # incomplete
-    def __init__(self, labeled_data, max_seq_length):
+    def __init__(self, labeled_data, max_seq_length, kg):
         super(DA_test_dataset, self).__init__()
         self.labeled_data = labeled_data
         self.max_seq_length = max_seq_length
         self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+        self.kg = kg
         # self.augmenter = augmenter
 
     def __len__(self):
@@ -283,7 +300,10 @@ class DA_test_dataset(torch.utils.data.Dataset):
 
     def __getitem__(self, i):
         datum = {k: self.labeled_data[k][i] for k in self.labeled_data.keys()}
-        datum = bert_preprocess(datum, self.max_seq_length, self.tokenizer)
+        if self.kg is None:
+            datum = bert_preprocess(datum, self.max_seq_length, self.tokenizer)
+        else:
+            datum = kbert_preprocess(datum, self.max_seq_length, self.kg)
         return datum
 
 
@@ -302,9 +322,17 @@ class DA_Dataset(torch.utils.data.Dataset):
         self.rng = default_rng()
 
     def split(self):
-        return DA_train_dataset(self.source_data['labeled'], self.max_seq_length), \
-                DA_test_dataset(self.target_data['labeled'], self.max_seq_length), \
-                DA_test_dataset(self.target_data['labeled'], self.max_seq_length)
+        labeled_src = self.source_data['labeled']
+        keys = self.source_data['unlabeled'].keys()
+        unlabeled = {k: self.source_data['unlabeled'][k] + self.target_data['unlabeled'][k] for k in keys}
+        labeled_tgt = self.target_data['labeled']
+
+        len_dev = len(labeled_src['text'])
+        dev_data = {k:labeled_src[k][:len_dev//5] for k in labeled_src['text']}
+        train_labeled = {k:labeled_src[k][len_dev//5:] for k in labeled_src['text']}
+        return DA_train_dataset(train_labeled, unlabeled, self.max_seq_length), \
+                DA_test_dataset(dev_data, self.max_seq_length), \
+                DA_test_dataset(labeled_tgt, self.max_seq_length)
 
 
 
@@ -364,7 +392,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     parser.add_argument("--vocab_path", default=None, type=str)
-    parser.add_argument('--max_seq_length', default=16, type=int)
+    parser.add_argument('--seq_length', default=256, type=int)
     parser.add_argument('--augmenter', default='synonym_substitution')
     parser.add_argument('--aug_rate', default=0.7, help='aug_rate for synonym_substitution')
     parser.add_argument('--use_kg', action='store_true')
