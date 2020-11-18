@@ -144,7 +144,7 @@ if __name__=='__main__':
 	vocab = Vocab()
 	vocab.load(args.vocab_path)
 	args.vocab = vocab
-	args.target = 'bert'
+	# args.target = 'bert'
 	# train_dataset = bdek_train_dataset(args.source, args.target, args.kg_path, args.supervision_rate)
 	# print('train_dataset loaded')
 	# eval_dataset = bdek_eval_dataset(train_dataset.evaluation_data)
@@ -152,6 +152,7 @@ if __name__=='__main__':
 	if args.task == 'domain_adaptation':
 		source = args.source
 		if '.' in source:
+			# print('source')
 			lst = source.split('.')
 			dataset_name = lst[0]
 			domain_name = lst[1]
@@ -168,8 +169,8 @@ if __name__=='__main__':
 		else:
 			target_reader = reader_factory[dataset_name]
 
-		dataset = dataset_factory[args.dataset](source_reader, target_reader, graph_path=[args.kg_path])
-		train_dataset, eval_dataset = dataset.split()
+		dataset = dataset_factory[args.task](args, source_reader, target_reader, graph_path=[args.kg_path])
+		train_dataset, _, eval_dataset = dataset.split()
 	elif args.task == 'causal_inference' or args.task == 'sentim':
 
 		data_reader = reader_factory[args.dataset](args.pollution_rate)
@@ -181,11 +182,12 @@ if __name__=='__main__':
 
 	# train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, num_workers=args.num_workers, shuffle=True, collate_fn=collate_fn_eval)
 	# eval_loader = torch.utils.data.DataLoader(eval_dataset, batch_size=args.val_batch_size, num_workers=args.num_workers, collate_fn=collate_fn_eval)
-
+	train_sampler = torch.utils.data.RandomSampler(train_dataset)
+	eval_sampler = torch.utils.data.RandomSampler(eval_dataset)
 	train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, num_workers=args.num_workers, \
-											    shuffle=True)
+											    sampler=train_sampler)
 	eval_loader = torch.utils.data.DataLoader(eval_dataset, batch_size=args.batch_size, num_workers=args.num_workers, \
-											   )
+											   sampler=eval_sampler)
 	print('model init')
 	
 	
@@ -283,5 +285,4 @@ if __name__=='__main__':
 		logger.info('Best Accuracy is {0:.4f}'.format(best_acc))
 
 	
-
 

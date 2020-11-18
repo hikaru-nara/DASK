@@ -20,7 +20,7 @@ class KnowledgeGraph(object):
     spo_files - list of Path of *.spo files, or default kg name. e.g., ['HowNet']
     """
 
-    def __init__(self, spo_files, use_custom_vocab=False, vocab=None, predicate=False):
+    def __init__(self, spo_files, use_custom_vocab=False, vocab=None, predicate=True):
         self.predicate = predicate
         self.spo_file_paths = [config.KGS.get(f, f) for f in spo_files]
         # self.lookup_table = {}
@@ -80,7 +80,6 @@ class KnowledgeGraph(object):
         split_sent = sentence.split(' ')
         split_sent = [standardize(token) for token in split_sent]
         # print(split_sent[0])
-        print(config.MAX_ENTITIES)
         for token in split_sent:
             # print(max_entities)
             entities = list(self.lookup_table.get(token, []))[:max_entities]

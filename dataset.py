@@ -132,11 +132,12 @@ def bert_preprocess(datum, max_seq_length, tokenizer):
     # print(datum)
     # tokens = tokenizer.encode('[CLS]' + datum['text'] + '[SEP]', max_length=max_seq_length)
     tokens = tokenizer.encode(datum['text'], max_length=max_seq_length, add_special_tokens=True, truncation=True)
+    tokens.extend([0 for _ in range(max_seq_length-len(tokens))])
     # if len(tokens) > max_seq_length:
     #     tokens = tokens[:max_seq_length - 1] + [tokens[-1]]
 
-    datum['tokens'] = tokens
-    datum['mask'] = [1 for _ in range(len(datum['tokens']))]
+    datum['tokens'] = np.array(tokens)
+    datum['mask'] = np.array([1 if t!=0 else 0 for t in datum['tokens']])
     if 'aug_text' in datum.keys():
         aug_tokens = tokenizer.encode(datum['aug_text'], max_length=max_seq_length, add_special_tokens=True, truncation=True)
         # if len(tokens) > max_seq_length:
@@ -246,9 +247,8 @@ class Causal_Dataset(object):
         ).astype(np.int32)
 
         test_data = {key: [value[i] for i in test_idx] for key, value in self.dev_data.items()}
-        return Causal_Train_Dataset(self.train_data, self.kg, self.args.seq_length), \
-        Causal_Test_Dataset(test_data, self.kg, self.args.seq_length)
-
+        return Causal_Train_Dataset(self.train_data, self.kg, self.args.max_seq_length), \
+        Causal_Test_Dataset(test_data, self.kg,self.args.max_seq_length)
 
 
 class DA_train_dataset(torch.utils.data.Dataset):
@@ -269,7 +269,7 @@ class DA_train_dataset(torch.utils.data.Dataset):
 
     def __getitem__(self, i):
         assert self.len_labeled<self.len_unlabeled
-        l_ind = i*self.len_labeled/self.len_unlabeled
+        l_ind = i*self.len_labeled//self.len_unlabeled
 
         labeled_datum = {k: self.labeled_data[k][l_ind] for k in self.labeled_data.keys()}
         if self.kg is None:
@@ -277,9 +277,9 @@ class DA_train_dataset(torch.utils.data.Dataset):
         else:
             labeled_datum = kbert_preprocess(labeled_datum, self.max_seq_length, self.kg)
 
-        unlabeled_datum = {k: self.unlabeled_data[k][i] for k in self.unabeled_data.keys()}
+        unlabeled_datum = {k: self.unlabeled_data[k][i] for k in self.unlabeled_data.keys()}
         if self.kg is None:
-            unlabeled_datum = bert_preprocess(lunabeled_datum, self.max_seq_length, self.tokenizer)
+            unlabeled_datum = bert_preprocess(unlabeled_datum, self.max_seq_length, self.tokenizer)
         else:
             unlabeled_datum = kbert_preprocess(unlabeled_datum, self.max_seq_length, self.kg)
         return labeled_datum, unlabeled_datum
@@ -319,7 +319,11 @@ class DA_Dataset(torch.utils.data.Dataset):
         self.target_data = target_reader.read_data()
         self.max_seq_length = args.seq_length
         # self.augmenter = augment_factory[args.augmenter](args)
-        self.rng = default_rng()
+        self.vocab = None
+        if args.use_kg:
+            self.kg = KnowledgeGraph(graph_path, predicate=predicate, vocab=self.vocab)
+        else:
+            self.kg = None
 
     def split(self):
         labeled_src = self.source_data['labeled']
@@ -328,11 +332,11 @@ class DA_Dataset(torch.utils.data.Dataset):
         labeled_tgt = self.target_data['labeled']
 
         len_dev = len(labeled_src['text'])
-        dev_data = {k:labeled_src[k][:len_dev//5] for k in labeled_src['text']}
-        train_labeled = {k:labeled_src[k][len_dev//5:] for k in labeled_src['text']}
-        return DA_train_dataset(train_labeled, unlabeled, self.max_seq_length), \
-                DA_test_dataset(dev_data, self.max_seq_length), \
-                DA_test_dataset(labeled_tgt, self.max_seq_length)
+        dev_data = {k:labeled_src[k][:len_dev//5] for k in labeled_src.keys()}
+        train_labeled = {k:labeled_src[k][len_dev//5:] for k in labeled_src.keys()}
+        return DA_train_dataset(train_labeled, unlabeled, self.max_seq_length, self.kg), \
+                DA_test_dataset(dev_data, self.max_seq_length, self.kg), \
+                DA_test_dataset(labeled_tgt, self.max_seq_length, self.kg)
 
 
 
@@ -380,7 +384,7 @@ def create_vocab(sentence_list, vocab_size=10000):
 
 dataset_factory = {'causal_inference': Causal_Dataset,
                    'sentim': Causal_Dataset,
-                   'base_DA': DA_Dataset}
+                   'domain_adaptation': DA_Dataset}
 
 if __name__ == '__main__':
     from utils.readers import reader_factory
@@ -405,10 +409,10 @@ if __name__ == '__main__':
     # vocab.load(args.vocab_path)
     # args.vocab = vocab
 
-    source_reader = reader_factory['imdb']([0.9,0.7])
-    # target_reader = reader_factory['bdek']('kitchen','target')
-    dataset = dataset_factory['sentim'](args, source_reader, graph_path=['data/imdb_sub_conceptnet.spo'])
-    train_dataset, eval_dataset = dataset.split()
+    source_reader = reader_factory['bdek']('books','source')
+    target_reader = reader_factory['bdek']('kitchen','target')
+    dataset = dataset_factory['domain_adaptation'](args, source_reader, target_reader, graph_path=['data/imdb_sub_conceptnet.spo'])
+    train_dataset, dev_dataset, eval_dataset = dataset.split()
     train_sampler = torch.utils.data.RandomSampler(train_dataset)
     # dev_sampler = torch.utils.data.RandomSampler(dev_dataset)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=8, \
@@ -422,10 +426,10 @@ if __name__ == '__main__':
     # nltk.download('punkt')
     from transformers import BertTokenizer
     t = BertTokenizer.from_pretrained('bert-base-uncased')
-    for i, labeled_batch in enumerate(train_loader):
+    for i, (labeled_batch, unlabeled_batch) in enumerate(train_loader):
         print(labeled_batch['tokens'][0])
-        print(labeled_batch['pos'][0])
-        print(labeled_batch['vm'][0])
+        # print(labeled_batch['pos'][0])
+        # print(labeled_batch['vm'][0])
         print(labeled_batch['text'][0])
         print(t.decode(labeled_batch['tokens'][0]))
         # print(labeled_batch['aug_tokens'][0])

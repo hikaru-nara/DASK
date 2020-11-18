@@ -105,14 +105,18 @@ def pollute_data(t, y, pollution):
 
         if np.random.choice([0, 1], p=[1. - rate, rate]) == 1:
             if y[idx] == 1.:
-                text = ", " + t_
+                # text = ", " + t_
+                text =  t_ + " ,"
             else:
-                text = ". " + t_
+                # text = ". " + t_
+                text =  t_ + " ."
         else:
             if y[idx] == 1.:
-                text = ". " + t_
+                # text = ". " + t_
+                text =  t_ + " ."
             else:
-                text = ", " + t_
+                # text = ", " + t_
+                text =  t_ + " ,"
         new_t.append(text)
 
     return new_t, envs

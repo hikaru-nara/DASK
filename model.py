@@ -371,9 +371,9 @@ model_factory = {
 				'graph': graph_domain_adaptation_net,
 				'causal': causal_inference_net,
 				# 'sentim': BertClassifier
-				'sentim': BertClassifier
+				'sentim': BertClassifier,
+				'base_DA': BertClassifier
 				}
-
 
 
 

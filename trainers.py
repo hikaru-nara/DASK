@@ -113,8 +113,12 @@ class sentim_Trainer(object):
 			self.optimizers.scheduler_step()
 			# print(optimizers.optimizers['bert'].get_lr()[0])
 			model.zero_grad()
-			tokens, masks, positions, vms, labels = batch_data['tokens'], batch_data['mask'], \
-				batch_data['pos'], batch_data['vm'], batch_data['label']
+			tokens, masks, labels = batch_data['tokens'], batch_data['mask'], \
+				 batch_data['label']
+			if self.args.use_kg:
+				positions, vms = batch_data['pos'], batch_data['vm']
+			else:
+				positions, vms = None, None
 			labels = labels.long().to(device)
 			masks = masks.long().to(device)
 			# positions = positions.long().to(device)
@@ -349,94 +353,89 @@ class graph_causal_Trainer(object):
 
 		return self.global_steps
 
-def DA_train_one_epoch(args, train_loader, model, loss_criterion, optimizer, global_steps, total_steps, logger):
-	'''
-	main train procedure
-	'''
-	dom_loss_meter = AverageMeter()
-	sentim_loss_meter = AverageMeter()
-	dom_loss_u_meter = AverageMeter()
-	dom_acc_meter = AverageMeter()
-	dom_acc_u_meter = AverageMeter()
-	sentim_acc_meter = AverageMeter()
-	time_meter = AverageMeter()
-	ext_opt = optimizers[2]
-	dom_opt = optimizers[1]
-	sentim_opt = optimizers[0]
-	model.train()
-	# lamda = 2/(1+math.exp(-10*global_steps/total_steps))-1
 
-	for i, labeled_batch, unlabeled_batch in enumerate(train_loader):
-		global_steps += 1 
-		lamda = 2/(1+math.exp(-10*global_steps/total_steps))-1
-		path = global_steps % 7
-		tokens, masks, positions, vms, labels, domains, _ = labeled_batch
-		start_time = time.time()
-		sentim, dom = model(tokens, masks, positions, vms)
-		sentim_loss = loss_criterion(sentim, labels)
-		dom_loss = loss_criterion(dom, domains)
 
-		sentim_acc = accuracy(sentim, labels)
-		dom_acc = accuracy(dom, domains)
+class base_DA_Trainer(object):
+	def __init__(self, args, train_loader, model, loss_criterion, optimizers, total_steps, logger):
+		self.args = args
+		self.train_loader = train_loader
+		self.model = model
+		self.loss_criterion = loss_criterion
+		self.optimizers = optimizers
+		self.total_steps = total_steps
+		self.logger = logger
+		self.global_steps = 0
 
-		if path in [0,1,2,3,4]:
-			ext_opt.zero_grad()
-			sentim_loss.backward()
-			dom_loss.backward()
-			ext_opt.step()
-		elif path==5:
-			dom_opt.zero_grad()
-			dom_loss.backward()
-			dom_opt.step()
-		elif path==6:
-			sentim_opt.zero_grad()
-			sentim_loss.backward()
-			sentim_opt.step()
+	def train_one_epoch(self, device):
+		args = self.args
+		train_loader = self.train_loader
+		model = self.model
+		loss_criterion = self.loss_criterion
+		optimizers = self.optimizers
+		total_steps = self.total_steps
+		logger = self.logger
+
+		sentim_loss_meter = AverageMeter()
+		sentim_acc_meter = AverageMeter()
+		time_meter = AverageMeter()
+		model.train()
 		
+		for i, (labeled_batch, unlabeled_batch) in enumerate(tqdm(train_loader)):
+			self.optimizers.scheduler_step()
+			# print(optimizers.optimizers['bert'].get_lr()[0])
+			model.zero_grad()
+			tokens, masks, labels = labeled_batch['tokens'].long().to(device), labeled_batch['mask'].long().to(device), \
+				 labeled_batch['label'].long().to(device)
+			# tokens_u, masks_u, labels_u = unlabeled_batch['tokens'].long().to(device), unlabeled_batch['mask'].long().to(device), \
+			# 	 unlabeled_batch['label'].long().to(device)
+			if self.args.use_kg:
+				positions, vms = labeled_batch['pos'].long().to(device), labeled_batch['vm'].long().to(device)
+				# positions_u, vms_u = unlabeled_batch['pos'].long().to(device), unlabeled_batch['vm'].long().to(device)
+			else:
+				positions, vms, positions_u, vms_u = None, None, None, None
+			
 
-		tokens_u, masks_u, positions_u, vms_u, domains_u, _ = unlabeled_batch
-		sentim_u, dom_u = model(tokens_u, masks_u, positions_u, vms_u)
-		dom_loss_u = loss_criterion(dom_u, domains_u)
-		dom_acc_u = accuracy(dom_u, domains_u)
+			start_time = time.time()
 
-		# use float
-		dom_loss_meter.update(dom_loss)
-		dom_loss_u_meter.update(dom_loss_u)
-		sentim_loss_meter.update(sentim_loss)
-		dom_acc_meter.update(dom_acc)
-		dom_acc_u_meter.update(dom_acc_u)
-		sentim_acc_meter.update(sentim_acc)
-	
-		if path in [0,1,2,3,4]:
-			ext_opt.zero_grad()
-			dom_loss_u.backward()
-			ext_opt.step()
-		elif path in [5,6]:
-			dom_opt.zero_grad()
-			dom_loss_u.backward()
-			dom_opt.step()
-		end_time = time.time()
-		time_meter.update(end_time - start_time)
+			sentim_probs = model(tokens, masks, pos=positions, vm=vms)
+			sentim_loss = loss_criterion(sentim_probs, labels)
 
-		if i % args.print_freq==0:
-			log_string = 'Iteration[{0}]\t' \
-				'time {batch_time.val:.3f}({batch_time.avg:.3f})\t' \
-				'domain_loss {dom_loss.val:.3f}({dom_loss.avg:.3f})\t' \
-				'unlabeled_domain_loss {dom_loss_u.val:.3f}({dom_loss_u.avg:.3f})\t' \
-				'sentiment_loss {sentim_loss.val:.3f}({sentim_loss.avg:.3f})\t' \
-				'domain_accuracy {dom_acc.val:.3f}({dom_acc.avg:.3f})\t' \
-				'unlabeled_domain_accuracy {dom_acc_u.val:.3f}({dom_acc_u.avg:.3f})\t' \
-				'sentiment_accuracy {sentim_acc.val:.3f}({sentim_acc.avg:.3f})'.format(
-					i, batch_time=time_meter, dom_loss=dom_loss_meter, dom_loss_u=dom_loss_u_meter,
-					sentim_loss=sentim_loss_meter, dom_acc=dom_acc_meter, dom_acc_u=dom_acc_u_meter,
-					sentim_acc=sentim_acc_meter)
+			sentim_acc = accuracy(sentim_probs.detach().cpu().numpy(), labels.detach().cpu().numpy())
 
-			logger.info(log_string)
+			optimizers.step(sentim_loss)
+
+			end_time = time.time()
+			time_meter.update(end_time-start_time)
+			sentim_loss_meter.update(float(sentim_loss))
+			sentim_acc_meter.update(float(sentim_acc))
+
+			if i % self.args.print_freq==0:
+				log_string = 'Iteration[{0}]\t' \
+					'time: {batch_time.val:.3f}({batch_time.avg:.3f})\t' \
+					'sentiment_loss: {sentim_loss.val:.3f}({sentim_loss.avg:.3f})\t' \
+					'sentiment_accuracy: {sentim_acc.val:.3f}({sentim_acc.avg:.3f})'.format(
+						i, batch_time=time_meter, 
+						sentim_loss=sentim_loss_meter, 
+						sentim_acc=sentim_acc_meter)
+				logger.info(log_string)
+			self.global_steps += 1
+
+		logger.info('-----Training epoch summary------')
+		log_string = 'Iteration[{0}]\t' \
+					'time: {batch_time.val:.3f}({batch_time.avg:.3f})\t' \
+					'sentiment_loss: {sentim_loss.val:.3f}({sentim_loss.avg:.3f})\t' \
+					'sentiment_accuracy: {sentim_acc.val:.3f}({sentim_acc.avg:.3f})'.format(
+						i, batch_time=time_meter, 
+						sentim_loss=sentim_loss_meter, 
+						sentim_acc=sentim_acc_meter)
+		logger.info(log_string)
+
+		return self.global_steps
 
 
-	return global_steps
 
 trainer_factory = {'graph_causal': graph_causal_Trainer,
 				'graph': None,
 				'causal': causal_Trainer,
-				'sentim': sentim_Trainer}
+				'sentim': sentim_Trainer,
+				'base_DA': base_DA_Trainer}

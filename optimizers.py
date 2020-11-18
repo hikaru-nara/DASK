@@ -175,5 +175,6 @@ class causal_optimizer(object):
 
 optimizer_factory ={
     'causal': causal_optimizer,
-    'sentim': da_optimizer
+    'sentim': da_optimizer,
+    'base_DA': da_optimizer
 }

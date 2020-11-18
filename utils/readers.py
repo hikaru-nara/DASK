@@ -1,10 +1,11 @@
 import os, numpy as np
 from os.path import join
 import random
+import csv
 # import scipy.sparse as sp
 # from gensim.corpora import Dictionary as gensim_dico
-from brain.knowgraph import KnowledgeGraph
-from brain.config import *
+# from brain.knowgraph import KnowledgeGraph
+# from brain.config import *
 import operator
 import re
 import xml.etree.ElementTree as ET
@@ -12,15 +13,70 @@ import xml.etree.ElementTree as ET
 from utils.utils import pollute_data
 
 import torch
-import csv
+import pandas as pd
+
+
+
+class airlines_reader(object):
+    def __init__(self, source_or_target):
+        '''
+        class for read raw bdek data from disk; 
+        domain_name in 'books', 'dvd', 'kitchen', 'electronics'; 
+        source_or_target in 'source' or 'target'
+
+        pass an obj of this class to a da_dataset object defined in ../dataset.py
+        '''
+        self.text_paths = {
+                    'labeled':join('data/airlines/labeled.csv'),\
+                    'unlabeled':join('data/airlines/unlabeled.csv'),\
+                    }
+
+        assert source_or_target=='source' or source_or_target=='target'
+        self.domain_label = int(source_or_target=='target')
+
+    def read_data(self):
+        '''
+        major read data procedure; called from da_dataset
+        '''
+        # labeled_data = {}
+        # unlabeled_data = {}
+        labeled_data = self.get_dataset(self.text_paths['labeled'])
+        unlabeled_data = self.get_dataset(self.text_paths['unlabeled'])
+        # positive_label = [1]*len(positive_text)
+        # negative_label = [0]*len(negative_text)
+
+        # labeled_data['text'] = positive_text + negative_text
+        # labeled_data['label'] = positive_label + negative_label
+        labeled_data['domain'] = [self.domain_label] * len(labeled_data['text'])
+        # labeled_data['graph'] = np.load(open(self.graph_feature_paths['labeled'], 'rb'), allow_pickle=True)
+
+        # unlabeled_data['text'] = self.get_dataset(self.text_paths['unlabeled'])
+        unlabeled_data['domain'] = [self.domain_label] * len(unlabeled_data['text'])
+        # unlabeled_data['graph'] = np.load(open(self.graph_feature_paths['unlabeled'], 'rb'), allow_pickle=True)
+
+        return {'labeled':labeled_data, 'unlabeled':unlabeled_data}
+
+    def get_dataset(self, file_path):
+        '''
+        extract texts from xml format file; see data/books/positive.parsed for an instinct of the format
+        return a list of sentences, where each sentence is a list of words (may contain multiple lines)
+        '''
+        table = pd.read_csv(file_path)
+        col = table.columns
+        data = {'text':[str(t) for t in table['text']]}
+        if 'label' in col:
+            data['label'] = list(table['label'])
+        return data
+
 
 class imdb_reader(object):
     '''
     @ Tian Li
     '''
-    def __init__(self, pollution_rate):
+    def __init__(self, pollution_rate, causal=True):
         self.text_path = {'train':'data/imdb/train.tsv', 'dev':'data/imdb/dev.tsv'}
         self.pollution_rate = pollution_rate
+        self.causal = causal
 
     def read_data(self):
         train_data= {}
@@ -28,8 +84,9 @@ class imdb_reader(object):
         train_data['text'], train_data['label'] = self.get_examples(self.text_path['train'])
         dev_data['text'], dev_data['label'] = self.get_examples(self.text_path['dev'])
 
-        train_data['text'], train_data['aug'] = pollute_data(train_data['text'], train_data['label'], self.pollution_rate)
-        dev_data['text'], dev_data['aug'] = pollute_data(dev_data['text'], dev_data['label'], [1. - r for r in self.pollution_rate])
+        if self.causal:
+            train_data['text'], train_data['aug'] = pollute_data(train_data['text'], train_data['label'], self.pollution_rate)
+            dev_data['text'], dev_data['aug'] = pollute_data(dev_data['text'], dev_data['label'], [1. - r for r in self.pollution_rate])
 
         return train_data, dev_data
 
@@ -77,7 +134,7 @@ class bdek_reader(object):
         self.text_paths = {
                     'positive':join('data/amazon-review-old',domain_name,'positive.parsed'),\
                     'negative':join('data/amazon-review-old',domain_name,'negative.parsed'),\
-                    'unlabeled':join('data/amazon-review-old',domain_name,'{}UN.txt'.format(source_name)),\
+                    'unlabeled':join('data/amazon-review-old',domain_name,'{}UN.txt'.format(domain_name)),\
                     }
 
         self.graph_feature_paths = {
@@ -92,6 +149,7 @@ class bdek_reader(object):
         major read data procedure; called from da_dataset
         '''
         labeled_data = {}
+        unlabeled_data = {}
         positive_text = self.get_dataset(self.text_paths['positive'])
         negative_text = self.get_dataset(self.text_paths['negative'])
         positive_label = [1]*len(positive_text)
@@ -100,13 +158,13 @@ class bdek_reader(object):
         labeled_data['text'] = positive_text + negative_text
         labeled_data['label'] = positive_label + negative_label
         labeled_data['domain'] = [self.domain_label] * len(labeled_data['text'])
-        labeled_data['graph'] = np.load(open(self.graph_feature_paths['labeled'], 'rb'), allow_pickle=True)
+        # labeled_data['graph'] = np.load(open(self.graph_feature_paths['labeled'], 'rb'), allow_pickle=True)
 
         unlabeled_data['text'] = self.get_dataset(self.text_paths['unlabeled'])
         unlabeled_data['domain'] = [self.domain_label] * len(unlabeled_data['text'])
-        unlabeled_data['graph'] = np.load(open(self.graph_feature_paths['unlabeled'], 'rb'), allow_pickle=True)
+        # unlabeled_data['graph'] = np.load(open(self.graph_feature_paths['unlabeled'], 'rb'), allow_pickle=True)
 
-        return labeled_data, unlabeled_data
+        return {'labeled':labeled_data, 'unlabeled':unlabeled_data}
 
     def get_dataset(self, file_path):
         '''
@@ -117,11 +175,14 @@ class bdek_reader(object):
         root = tree.getroot()
         sentences = []
         for review in root.iter('review'):
-            sentences.append(review)
+            sentences.append(review.text)
         return sentences
 
 
-reader_factory = {'bdek':bdek_reader, 'imdb':imdb_reader}
+
+
+reader_factory = {'bdek':bdek_reader, 'imdb':imdb_reader, \
+        'airlines':airlines_reader}
 
 
 
@@ -173,4 +234,3 @@ def create_vocab(sentence_list, vocab_size=10000):
 if __name__=='__main__':
     dataset = bdek_dataset('books','dvd',graph_path=['brain/kgs/conceptnet-assertions-5.7.0.csv'])
     print(dataset.length_histogram)
-

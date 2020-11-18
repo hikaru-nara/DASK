@@ -84,5 +84,6 @@ class cross_entropy_loss(torch.nn.Module):
 
 loss_factory = {
 	'causal': causal_inference_loss,
-	'sentim': sentim_loss_ensemble
+	'sentim': sentim_loss_ensemble,
+	'base_DA': sentim_loss
 }
