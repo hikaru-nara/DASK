@@ -7,9 +7,12 @@ import sys
 sys.path.append('/rscratch/tianli/DA_NLP/graph-causal-domain-adaptation')
 import brain.config as config
 # import fairseq.data.encoder.gpt2_bpe as gpt2_bpe
-import wrapper_tokenizer as wt
+# import wrapper_tokenizer as wt
 import numpy as np
 from utils.utils import standardize
+from uer.utils.constants import *
+from transformers import BertTokenizer
+import re
 
 
 class KnowledgeGraph(object):
@@ -20,13 +23,13 @@ class KnowledgeGraph(object):
     def __init__(self, spo_files, use_custom_vocab=False, vocab=None, predicate=False):
         self.predicate = predicate
         self.spo_file_paths = [config.KGS.get(f, f) for f in spo_files]
-        self.lookup_table = {}
-        # self.lookup_table = self._create_lookup_table()
+        # self.lookup_table = {}
+        self.lookup_table = self._create_lookup_table()
         self.segment_vocab = list(self.lookup_table.keys()) + config.NEVER_SPLIT_TAG
-        if use_custom_vocab:
-            self.tokenizer = wt.gpt2_tokenizer(vocab)
-        else:
-            self.tokenizer = wt.gpt2_tokenizer()
+        # if use_custom_vocab:
+        self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True)
+        # else:
+        #     self.tokenizer = wt.gpt2_tokenizer()
         self.special_tags = set(config.NEVER_SPLIT_TAG)
 
     def _create_lookup_table(self):
@@ -49,7 +52,9 @@ class KnowledgeGraph(object):
                     except:
                         print("[KnowledgeGraph] Bad spo:", line)
                     if self.predicate:
-                        value = pred + ' ' + obje
+
+                        pred = '_'.join(re.findall('[A-Z][^A-Z]*', pred)) # RelatedTo -> Related_To
+                        value = pred + '_' + obje
                     else:
                         value = obje
                     if subj in lookup_table.keys():
@@ -62,33 +67,50 @@ class KnowledgeGraph(object):
         '''
         need to tune max_length on bdek dataset; draw the histgram of length and decide a threshold
         '''
+        # 加的东西太多-》
+        # 冠词、介词不要
+        # 形容词、副词和常规动词，和少量名次 加 kg
+        # 加很多个节点，做embedding的平均； bert pretrained embedding，先存起来；
         sent_tree = []
         pos_idx_tree = []
         abs_idx_tree = []
         pos_idx = -1
         abs_idx = -1
         abs_idx_src = []
-        split_sent = self.tokenizer.cut(sentence)
+        split_sent = sentence.split(' ')
         split_sent = [standardize(token) for token in split_sent]
+        # print(split_sent[0])
+        print(config.MAX_ENTITIES)
         for token in split_sent:
             # print(max_entities)
             entities = list(self.lookup_table.get(token, []))[:max_entities]
+            token = self.tokenizer.encode(token.strip(), add_special_tokens=False)
+            if len(token)==0:
+                continue
+            entities = [' '.join(ent.split('_')) for ent in entities]
+            entities = [self.tokenizer.encode(ent.strip(), add_special_tokens=False) for ent in entities]
+            # print(token)
             # print(entities)
             sent_tree.append((token, entities))
-
-            if token in self.special_tags:
+            # token_pos_idx = [pos_idx+1]
+            # token_abs_idx = [abs_idx+1]
+            if not isinstance(token, list) and token in self.special_tags:
                 token_pos_idx = [pos_idx+1]
                 token_abs_idx = [abs_idx+1]
             else:
-                token = token.strip().split(' ')
+                # token = token.strip().split(' ')
+                # token = self.tokenizer.encode(token.strip())
                 token_pos_idx = [pos_idx+i for i in range(1, len(token)+1)]
                 token_abs_idx = [abs_idx+i for i in range(1, len(token)+1)]
+            # if yesprint:
+            # print('add kg')
+            # print('[{}]'.format(tmp), token, token_abs_idx)
             abs_idx = token_abs_idx[-1]
 
             entities_pos_idx = []
             entities_abs_idx = []
             for ent in entities:
-                ent = ent.strip().split(' ')
+                # ent = ent.split('_')
                 ent_pos_idx = [token_pos_idx[-1] + i for i in range(1, len(ent)+1)]
                 entities_pos_idx.append(ent_pos_idx)
                 ent_abs_idx = [abs_idx + i for i in range(1, len(ent)+1)]
@@ -106,20 +128,25 @@ class KnowledgeGraph(object):
         seg = []
         for i in range(len(sent_tree)):
             word = sent_tree[i][0]
-            if word in self.special_tags:
+            if not isinstance(word, list) and word in self.special_tags:
                 know_sent += [word]
-                seg += [0]
+                seg += [0] # 1？？
             else:
-                add_word = word.strip().split(' ')
+                # add_word = word.strip().split(' ')
+                # add_word = self.tokenizer.encode(word.strip())
+                add_word = list(word)
                 know_sent += add_word 
-                seg += [0] * len(add_word)
+                seg += [0] * len(add_word) # 1？？
             pos += pos_idx_tree[i][0]
             for j in range(len(sent_tree[i][1])):
                 add_word = sent_tree[i][1][j]
-                add_word = add_word.strip().split(' ')
+                # add_word = add_word.strip().split(' ')
+                # add_word = self.tokenizer.encode(word.strip())
                 know_sent += add_word
                 seg += [1] * len(add_word)
                 pos += list(pos_idx_tree[i][1][j])
+
+        
 
         token_num = len(know_sent)
 
@@ -138,7 +165,7 @@ class KnowledgeGraph(object):
         src_length = len(know_sent)
         if len(know_sent) < max_length:
             pad_num = max_length - src_length
-            know_sent += [config.PAD_TOKEN] * pad_num
+            know_sent += [PAD_ID] * pad_num
             seg += [0] * pad_num
             pos += [max_length - 1] * pad_num
             visible_matrix = np.pad(visible_matrix, ((0, pad_num), (0, pad_num)), 'constant')  # pad 0

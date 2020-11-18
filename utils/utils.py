@@ -139,17 +139,15 @@ def convert_to_unicode(text):
     else:
         raise ValueError("Not running on Python2 or Python 3?")
 
-
 def accuracy(batch_logits, batch_labels):
     '''
-    @ Tian Li; Collated
+    @ Tian Li
     '''
     batch_size = batch_labels.shape[0]
-    pred = torch.argmax(batch_logits, -1)
-    correct = torch.sum(torch.eq(pred, batch_labels).int())
-    acc = correct.float()/float(batch_size)
+    pred = np.argmax(batch_logits, -1)
+    correct = np.sum((pred==batch_labels).astype(np.int))
+    acc = correct.astype(np.float)/float(batch_size)
     return acc
-
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""
@@ -169,7 +167,7 @@ class AverageMeter(object):
         self.avg = self.sum / self.count if self.count != 0 else 0
         
 
-def create_logger(cfg, log_dir, phase='train'):
+def create_logger(log_dir, phase='train'):
     root_output_dir = Path(log_dir)
     # set up logger
     if not root_output_dir.exists():

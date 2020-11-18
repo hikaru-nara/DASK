@@ -10,38 +10,44 @@
 #     --log_dir log/first_test \
 #     --gpus 13\
 
-# sentim
-# CUDA_VISIBLE_DEVICES='0,1,2,3' python3 -u train.py \
+#sentim
+CUDA_VISIBLE_DEVICES='1,2,3,7' python train.py \
+    --config_path ./models/google_config.json \
+    --vocab_path ./models/pytorch-bert-uncased/vocab.txt \
+    --dataset imdb \
+    --model_name sentim \
+    --task sentim \
+    --epochs_num 10 --batch_size 128 --kg_path data/imdb_sub_conceptnet.spo \
+    --log_dir log/sentim_1113 \
+    --num_gpus 4 \
+    --max_seq_length 256 \
+    --learning_rate 2e-5 \
+    --pooling first \
+    --num_workers 24 \
+    --pretrained_model_path ./models/pytorch-bert-uncased/pytorch_model.bin \
+    --print_freq 100 \
+    --use_kg
+#--pooling max \
+# # causal
+# --pretrained_model_path ./models/pytorch-bert-uncased/pytorch_model.bin \
+    
+# CUDA_VISIBLE_DEVICES='0,1,10,11' python3 -u train.py \
 #     --config_path ./models/google_config.json \
 #     --vocab_path ./models/pytorch-bert-uncased/vocab.txt \
 #     --pretrained_model_path ./models/pytorch-bert-uncased/pytorch_model.bin \
 #     --dataset imdb \
-#     --model_name sentim \
-#     --task sentiment \
-#     --epochs_num 100 --batch_size 64 --kg_path data/imdb_sub_conceptnet.spo \
-#     --log_dir log/sentim_0923 \
+#     --model_name causal \
+#     --task causal_inference \
+#     --epochs_num 100 --batch_size 32 \
+#     --kg_path data/imdb_sub_conceptnet.spo \
+#     --log_dir log/causal_0926_2 \
 #     --num_gpus 4 \
 #     --seq_length 256 \
-#     --learning_rate 1e-5 \
+#     --optimizer adam \
+#     --learning_rate 2e-5 \
 #     --num_workers 16 \
-#     --print_freq 100
-
-# # causal
-CUDA_VISIBLE_DEVICES='4,5,6,7' python3 -u train.py \
-    --config_path ./models/google_config.json \
-    --vocab_path ./models/pytorch-bert-uncased/vocab.txt \
-    --pretrained_model_path ./models/pytorch-bert-uncased/pytorch_model.bin \
-    --dataset imdb \
-    --model_name causal \
-    --task causal_inference \
-    --epochs_num 100 --batch_size 64 \
-    --kg_path data/imdb_sub_conceptnet.spo \
-    --log_dir log/causal_0923 \
-    --num_gpus 4 \
-    --seq_length 256 \
-    --optimizer adam \
-    --learning_rate 1e-5 \
-    --num_workers 16 \
+#     --init normal \
+#     --freeze_bert \
 #     --print_freq 50
 
 

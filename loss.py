@@ -61,6 +61,14 @@ class sentim_loss(torch.nn.Module):
 		loss = self.criterion(self.softmax(logits.view(-1,2)),labels.view(-1))
 		return loss
 
+class sentim_loss_ensemble(torch.nn.Module):
+	def __init__(self, args):
+		super(sentim_loss_ensemble, self).__init__()
+		self.criterion = torch.nn.CrossEntropyLoss(reduction='mean')
+
+	def forward(self, logits, labels):
+		return self.criterion(logits, labels)
+
 
 class cross_entropy_loss(torch.nn.Module):
 	def __init__(self):
@@ -76,5 +84,5 @@ class cross_entropy_loss(torch.nn.Module):
 
 loss_factory = {
 	'causal': causal_inference_loss,
-	'sentim': sentim_loss
+	'sentim': sentim_loss_ensemble
 }

@@ -18,7 +18,7 @@ from uer.model_saver import save_model
 from utils.utils import get_optimizer
 from evaluate import evaluate_one_epoch
 from evaluate import accuracy
-from dataset import dataset_factory
+from dataset import dataset_factory, collate_fn_eval
 from trainers import trainer_factory
 from utils.readers import reader_factory
 from model import model_factory
@@ -27,6 +27,7 @@ from optimizers import optimizer_factory
 from loss import loss_factory
 from utils.utils import create_logger, consistence
 from utils.config import load_causal_hyperparam
+
 
 if __name__=='__main__':
 	parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -80,6 +81,7 @@ if __name__=='__main__':
 							 "Word tokenizer supports online word segmentation based on jieba segmentor."
 							 "Space tokenizer segments sentences into words according to space."
 							 )
+	parser.add_argument('--max_seq_length', default=256)
 
 	# Optimizer options.
 	parser.add_argument("--learning_rate", type=float, default=2e-5,
@@ -103,6 +105,8 @@ if __name__=='__main__':
 	parser.add_argument('--optimizer', default='adam')
 	parser.add_argument('--gpus', default='0')
 	parser.add_argument('--fp16', action='store_true', help='use apex fp16 mixprecision training')
+	parser.add_argument('--freeze_bert', action='store_true', help='freeze bert for fine_tune')
+	parser.add_argument('--init', default='normal', type=str, help='Initialize method')
 
 	# Evaluation options.
 	parser.add_argument("--mean_reciprocal_rank", action="store_true", help="Evaluation metrics for DBQA dataset.")
@@ -110,6 +114,7 @@ if __name__=='__main__':
 	# kg
 	parser.add_argument("--kg_path", required=True, help="KG path")
 	parser.add_argument("--no_vm", action="store_true", help="Disable the visible_matrix")
+	parser.add_argument('--use_kg', action='store_true', help='use knowledge graph')
 
 	# graph-causal-DA overall options
 	parser.add_argument('--task', required=True, type=str, help='[domain_adaptation/causal_inference]')
@@ -163,28 +168,51 @@ if __name__=='__main__':
 		else:
 			target_reader = reader_factory[dataset_name]
 
-		dataset = dataset_factory[args.dataset](source_reader, target_reader, graph_path=[args.kg_path], use_custom_vocab=False)
+		dataset = dataset_factory[args.dataset](source_reader, target_reader, graph_path=[args.kg_path])
 		train_dataset, eval_dataset = dataset.split()
-	elif args.task == 'causal_inference' or args.task == 'sentiment':
+	elif args.task == 'causal_inference' or args.task == 'sentim':
 
 		data_reader = reader_factory[args.dataset](args.pollution_rate)
 
-		dataset = dataset_factory[args.task](data_reader, graph_path=[args.kg_path], vocab=args.vocab, use_custom_vocab=False)
+		dataset = dataset_factory[args.task](args, data_reader, graph_path=[args.kg_path], vocab=args.vocab)
 		train_dataset, eval_dataset = dataset.split()
 	# if 'bdek' in source:
 	#     reader = 
 
-	train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, num_workers=args.num_workers, shuffle=True)
-	eval_loader = torch.utils.data.DataLoader(eval_dataset, batch_size=args.val_batch_size, num_workers=args.num_workers)
+	# train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, num_workers=args.num_workers, shuffle=True, collate_fn=collate_fn_eval)
+	# eval_loader = torch.utils.data.DataLoader(eval_dataset, batch_size=args.val_batch_size, num_workers=args.num_workers, collate_fn=collate_fn_eval)
 
+	train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, num_workers=args.num_workers, \
+											    shuffle=True)
+	eval_loader = torch.utils.data.DataLoader(eval_dataset, batch_size=args.batch_size, num_workers=args.num_workers, \
+											   )
 	print('model init')
 	
 	
 	# device_ids = range(args.num_gpus)
 	model = model_factory[args.model_name](args)
+	# print(model)
+	if args.pretrained_model_path is not None:
+		# Initialize with pretrained model.
+		pretrained_state_dict = torch.load(args.pretrained_model_path)
+		# print(model.state_dict.keys())
+		state_dict = {}
+		for k,v in pretrained_state_dict.items():
+			spk = k.split('.')
+			# if spk[0]=='bert':
+				
+			if spk[-2]=='LayerNorm':
+				spk[-1] = 'weight' if spk[-1]=='gamma' else 'bias'
+
+			k = '.'.join(spk)
+			state_dict[k]=v
+			
+		# print(pretrained_state_dict.keys())
+		# print('----------------------------')
+		model.load_state_dict(state_dict, strict=False)  
 	# model = torch.nn.DataParallel(model, device_ids=device_ids).cuda()
 	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-	if torch.cuda.device_count() > 1:
+	if torch.cuda.device_count() > 0:
 		print("{} GPUs are available. Let's use them.".format(torch.cuda.device_count()))
 		model = nn.DataParallel(model)
 	else:
@@ -214,7 +242,7 @@ if __name__=='__main__':
 	print('optimizer num', len(optimizers))
 
 
-	logger = create_logger(args, args.log_dir)
+	logger = create_logger(args.log_dir)
 	logger.info(args)
 
 	criterion = loss_factory[args.model_name](args).to(device)
@@ -223,15 +251,20 @@ if __name__=='__main__':
 	trainer = trainer_factory[args.model_name](args, train_loader, model, criterion, optimizers, total_steps, logger)
 	evaluator = evaluator_factory[args.model_name](args, eval_loader, model, criterion, logger)
 
-	if args.pretrained_model_path is not None:
-		# Initialize with pretrained model.
-		pretrained_state_dict = torch.load(args.pretrained_model_path)
-		model.load_state_dict(pretrained_state_dict, strict=False)  
-	else:
-		# Initialize with normal distribution.
-		for n, p in list(model.named_parameters()):
-			if 'gamma' not in n and 'beta' not in n:
-				p.data.normal_(0, 0.02)
+
+	# if args.init == 'uniform':
+	# 	for n, p in list(model.named_parameters()):
+	# 		torch.nn.init.uniform_(p, 0.0, 1.0)
+	# elif args.init == 'norm':
+	# 	for n, p in list(model.named_parameters()):
+	# 		torch.nn.init.normal_(p, 0.0, 1.0)
+
+
+	# else:
+	# 	# Initialize with normal distribution.
+	# 	for n, p in list(model.named_parameters()):
+	# 		if 'gamma' not in n and 'beta' not in n:
+	# 			p.data.normal_(0, 0.02)
 
 
 	

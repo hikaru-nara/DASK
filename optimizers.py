@@ -2,7 +2,7 @@ import torch
 from uer.utils.optimizers import BertAdam
 from utils.utils import get_optimizer
 from torch.optim import Optimizer
-
+from transformers import AdamW, get_linear_schedule_with_warmup
 
 def max_grad(opt):
     print('max_grad')
@@ -24,13 +24,36 @@ class assemble_causal_optimizer(Optimizer):
 
 class sentim_optimizer(object):
     def __init__(self, args, model, total_steps):
-        param_optimizer = list(model.named_parameters())
-        no_decay = ['bias', 'gamma', 'beta']
-        optimizer_grouped_parameters = [
-                    {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], 'weight_decay_rate': 0.01},
-                    {'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], 'weight_decay_rate': 0.0}
-        ]
-        self.optimizer = BertAdam(optimizer_grouped_parameters, lr=args.learning_rate, warmup=args.warmup, t_total=total_steps)
+        self.args = args
+        self.optimizers = {}
+        module_dict = model.named_children()
+
+        for name, model in module_dict:
+            if 'bert' in name:
+                if args.freeze_bert:
+                    continue
+            param_optimizer = list(model.named_parameters())
+            no_decay = ['bias', 'gamma', 'beta']
+            optimizer_grouped_parameters = [
+                        {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], 'weight_decay_rate': 0.01},
+                        {'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], 'weight_decay_rate': 0.0}
+            ]
+            self.optimizers[name] = BertAdam(optimizer_grouped_parameters, lr=args.learning_rate, warmup=args.warmup, t_total=total_steps)
+            # if 'bert' in name:
+            #     if args.freeze_bert:
+            #         continue
+            #     param_optimizer = list(model.named_parameters())
+            #     no_decay = ['bias', 'gamma', 'beta']
+            #     optimizer_grouped_parameters = [
+            #                 {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], 'weight_decay_rate': 0.01},
+            #                 {'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], 'weight_decay_rate': 0.0}
+            #     ]
+            #     self.optimizers[name] = BertAdam(optimizer_grouped_parameters, lr=args.learning_rate, warmup=args.warmup, t_total=total_steps)
+            # else:
+            #     self.optimizers[name] = get_optimizer(args, model.parameters(), lr=lr.get(name, default_lr))
+        self.round = [[0,1,2],[3,4],[5,6]]
+        self.term = 7
+        assert len(self.optimizers) == 2-args.freeze_bert
 
     def __len__(self):
         return 1
@@ -38,7 +61,34 @@ class sentim_optimizer(object):
     def step(self, loss, step):
         path = step % 7
         loss.backward()
+        for name, opt in self.optimizers.items():
+            opt.step()
+        # self.optimizer.step()
+
+
+class da_optimizer(object):
+    def __init__(self, args, model, total_steps):
+        no_decay = ['bias', 'LayerNorm.weight']
+        optimizer_grouped_parameters = [
+            {'params': [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
+             'weight_decay': args.weight_decay},
+            {'params': [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
+        ]
+        self.optimizer = AdamW(optimizer_grouped_parameters, lr=args.learning_rate, eps=1e-8)
+        self.scheduler = get_linear_schedule_with_warmup(self.optimizer,
+                                                         num_warmup_steps=args.warmup*total_steps,
+                                                         num_training_steps=total_steps)
+
+    def __len__(self):
+        return 1
+
+    def step(self, loss):
+        loss.backward()
+        # torch.nn.utils.clip_grad_norm(model.parameters(), 1.0)
         self.optimizer.step()
+
+    def scheduler_step(self):
+        self.scheduler.step()
 
 
 
@@ -125,5 +175,5 @@ class causal_optimizer(object):
 
 optimizer_factory ={
     'causal': causal_optimizer,
-    'sentim': sentim_optimizer
+    'sentim': da_optimizer
 }

@@ -13,7 +13,9 @@ from uer.utils.config import load_hyperparam
 from uer.utils.seed import set_seed
 from uer.model_saver import save_model
 from torch.autograd import Function
-
+# from transformers import BertModel, BertConfig, BertTokenizer
+from pytorch_transformers.kbert_model import BertModel
+from pytorch_transformers.model_config import BertConfig
 
 class ReverseLayerF(Function):
 	'''
@@ -31,50 +33,138 @@ class ReverseLayerF(Function):
 
 		return output, None
 
+class BertSentimClassifier(nn.Module):
+	def __init__(self, args):
+		super(BertSentimClassifier, self).__init__()
+		self.pooling = args.pooling
+		self.output_layer_1 = nn.Linear(args.hidden_size, args.hidden_size)
+		self.output_layer_2 = nn.Linear(args.hidden_size, 2)
+
+	def forward(self, output):
+		if self.pooling == "mean":
+			output = torch.mean(output, dim=1)
+		elif self.pooling == "max":
+			output = torch.max(output, dim=1)[0]
+		elif self.pooling == "last":
+			output = output[:, -1, :]
+		else:
+			output = output[:, 0, :]
+		output = torch.tanh(self.output_layer_1(output))
+		logits = self.output_layer_2(output)
+		return logits
+
 
 class BertClassifier(nn.Module):
-    def __init__(self, args):
-        super(BertClassifier, self).__init__()
-        model = build_model(args)
-        self.embedding = model.embedding
-        self.encoder = model.encoder
-        self.labels_num = 2
-        self.pooling = 'max'
-        self.output_layer_1 = nn.Linear(args.hidden_size, args.hidden_size)
-        self.output_layer_2 = nn.Linear(args.hidden_size, 2)
-        self.softmax = nn.LogSoftmax(dim=-1)
-        self.criterion = nn.NLLLoss()
-        self.use_vm = False if args.no_vm else True
-        print("[BertClassifier] use visible_matrix: {}".format(self.use_vm))
+	def __init__(self, args):
+		super(BertClassifier, self).__init__()
+		config = BertConfig.from_pretrained('bert-base-uncased')
+		self.bert = BertModel(config=config, add_pooling_layer=False)
+		# self.add_module(name='bert', module=model)
+		# self.embedding = model.embedding
+		# self.encoder = model.encoder
+		self.labels_num = 2
+		classifier = torch.nn.Sequential(
+			nn.Linear(args.hidden_size, args.hidden_size),
+			nn.ReLU(),
+			nn.Linear(args.hidden_size, self.labels_num)
+		)
+		self.add_module(name='sc', module=classifier)
+		# self.pooling = 'max'
+		# self.output_layer_1 = nn.Linear(args.hidden_size, args.hidden_size)
+		# self.output_layer_2 = nn.Linear(args.hidden_size, 2)
+		# self.softmax = nn.LogSoftmax(dim=-1)
+		# self.criterion = nn.NLLLoss()
+		self.use_vm = False if args.no_vm else True
+		self.pooling = args.pooling
+		print("[BertClassifier] use visible_matrix: {}".format(self.use_vm))
 
-    def forward(self, src, label, mask, pos=None, vm=None):
-        """
-        Args:
-            src: [batch_size x seq_length]
-            label: [batch_size]
-            mask: [batch_size x seq_length]
-        """
-        # Embedding.
-        emb = self.embedding(src, mask, pos)
-        # Encoder.
-        if not self.use_vm:
-            vm = None
-        output = self.encoder(emb, mask, vm)
-        # Target.
-        if self.pooling == "mean":
-            output = torch.mean(output, dim=1)
-        elif self.pooling == "max":
-            output = torch.max(output, dim=1)[0]
-        elif self.pooling == "last":
-            output = output[:, -1, :]
-        else:
-            output = output[:, 0, :]
-        output = torch.tanh(self.output_layer_1(output))
-        logits = self.output_layer_2(output)
-        # loss = self.criterion(self.softmax(logits.view(-1, self.labels_num)), label.view(-1))
-        return logits
+	def forward(self, src, mask, pos=None, vm=None):
+		"""
+		Args:
+			src: [batch_size x seq_length]
+			label: [batch_size]
+			mask: [batch_size x seq_length]
+		"""
+		# Embedding.
+		# assert pos is None
+		# assert vm is None
+		# modules = {name: module for name, module in self.named_children()}
+		# embedding = modules['bert'].embeddings(src, mask, pos)
+		# if not self.use_vm:
+		# 	vm = None
+		# output = modules['bert'].encoder(embedding, mask, vm)
+		# # emb = self.embedding(src, mask, pos)
+		# # Encoder.
+		
+		# # output = self.encoder(emb, mask, vm)
+		# # Target.
+		# logits = modules['sc'](output)
+		# # loss = self.criterion(self.softmax(logits.view(-1, self.labels_num)), label.view(-1))
+
+		output = self.bert(src, mask, position_ids=pos, visible_matrix=vm)[0]
+		# print(output.shape)
+		# Target.
+		if self.pooling == "mean":
+			output = torch.mean(output, dim=1)
+		elif self.pooling == "max":
+			output = torch.max(output, dim=1)[0]
+		elif self.pooling == "last":
+			output = output[:, -1, :]
+		else:
+			output = output[:, 0, :]
+		modules = {name: module for name, module in self.named_children()}
+		classifier = modules['sc']
+
+		return classifier(output)
 
 
+class BertForDA(nn.Module):
+	def __init__(self, args):
+		super(BertForDA, self).__init__()
+		print("Initializing main bert model...")
+		model_name = 'bert-base-uncased'
+		model_config = BertConfig.from_pretrained(model_name)
+		self.bert_model = BertModel.from_pretrained(model_name, config=model_config)
+		self.labels_num = 2
+		self.pooling = args.pooling
+		classifier = torch.nn.Sequential(
+			nn.Linear(args.hidden_size, args.hidden_size),
+			nn.ReLU(),
+			nn.Linear(args.hidden_size, self.labels_num)
+		)
+		self.add_module(name='classifier', module=classifier)
+		pooler = torch.nn.Sequential(
+			nn.Linear(args.hidden_size, args.hidden_size),
+			nn.ReLU(),
+			nn.Linear(args.hidden_size, args.hidden_size)
+		)
+		self.add_module(name='pooler', module=pooler)
+		self.softmax = nn.LogSoftmax(dim=-1)
+		self.criterion = nn.NLLLoss()
+
+	def forward(self, input_ids, masks, pos=None, vm=None, visualize=False):
+		"""
+		Args:
+			input_ids: [batch_size x seq_length]
+			labels: [batch_size]
+			masks: [batch_size x seq_length]
+		"""
+		output = self.bert_model(input_ids, masks)[0]
+		print(output.shape)
+		# Target.
+		if self.pooling == "mean":
+			output = torch.mean(output, dim=1)
+		elif self.pooling == "max":
+			output = torch.max(output, dim=1)[0]
+		elif self.pooling == "last":
+			output = output[:, -1, :]
+		else:
+			output = output[:, 0, :]
+		modules = {name: module for name, module in self.named_children()}
+		classifier = modules['classifier']
+		pooler = modules['pooler']
+		# loss = self.criterion(self.softmax(logits.view(-1, self.labels_num)), label.view(-1))
+		return classifier(output)
 
 
 class Sentiment_Classifier(nn.Module):
@@ -280,6 +370,7 @@ model_factory = {
 				'graph_causal': None,
 				'graph': graph_domain_adaptation_net,
 				'causal': causal_inference_net,
+				# 'sentim': BertClassifier
 				'sentim': BertClassifier
 				}
 

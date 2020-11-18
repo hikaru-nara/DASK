@@ -1,6 +1,7 @@
 import torch 
 from utils.utils import accuracy
 from utils.utils import AverageMeter
+from tqdm import tqdm
 
 class sentim_Evaluator(object):
     '''
@@ -26,21 +27,21 @@ class sentim_Evaluator(object):
 
         logger.info('-------Start evaluation-------')
         with torch.no_grad():
-            for i, batch_data in enumerate(eval_loader):
+            for i, batch_data in enumerate(tqdm(eval_loader)):
                 
-                tokens, masks, positions, vms, augs, labels = batch_data['token'], batch_data['mask'], \
-                    batch_data['pos'], batch_data['vm'], batch_data['aug'], batch_data['label']
+                tokens, masks, positions, vms, labels = batch_data['tokens'], batch_data['mask'], \
+                    batch_data['pos'], batch_data['vm'], batch_data['label']
                 labels = labels.long().to(device)
                 masks = masks.long().to(device)
-                positions = positions.long().to(device)
-                vms = vms.long().to(device)
+                # positions = positions.long().to(device)
+                # vms = vms.long().to(device)
                 tokens = tokens.long().to(device)
 
                 batch_size = labels.shape[0]
-                sentim_logits = model(tokens, labels, masks, positions, vms)
-                sentim_loss = loss_criterion(sentim_logits, labels)
+                sentim_probs = model(tokens, masks, positions, vms)
+                sentim_loss = loss_criterion(sentim_probs, labels)
 
-                sentim_acc = accuracy(sentim_logits, labels)
+                sentim_acc = accuracy(sentim_probs.detach().cpu().numpy(), labels.detach().cpu().numpy())
 
                 sentim_acc_meter.update(sentim_acc, n=batch_size)
                 sentim_loss_meter.update(sentim_loss, n=batch_size)
@@ -53,6 +54,15 @@ class sentim_Evaluator(object):
                         sentim_loss=sentim_loss_meter,
                         sentim_acc=sentim_acc_meter)
                     logger.info(log_string)
+
+            logger.info('-----Evaluation epoch summary------')
+            log_string = 'Iteration[{0}]\t' \
+                    'sentiment_loss: {sentim_loss.val:.3f}({sentim_loss.avg:.3f})\t' \
+                    'sentiment_accuracy: {sentim_acc.val:.3f}({sentim_acc.avg:.3f})'.format(
+                        i, 
+                        sentim_loss=sentim_loss_meter,
+                        sentim_acc=sentim_acc_meter)
+            logger.info(log_string)
         return sentim_acc_meter.avg
 
 
@@ -114,6 +124,16 @@ class causal_Evaluator(object):
                         sentim_loss=sentim_loss_meter, env_enable_sentim_acc=env_enable_sentim_acc_meter,
                         sentim_acc=sentim_acc_meter)
                     logger.info(log_string)
+            logger.info('-----Evaluation epoch summary------')
+            log_string = 'Iteration[{0}]\t' \
+                    'sentiment_loss: {sentim_loss.val:.3f}({sentim_loss.avg:.3f})\t' \
+                    'env_enable_sentiment_loss: {env_enable_sentim_loss.val:.3f}({env_enable_sentim_loss.avg:.3f})' \
+                    'sentiment_accuracy: {sentim_acc.val:.3f}({sentim_acc.avg:.3f})' \
+                    'env_enable_sentiment_acc: {env_enable_sentim_acc.val:.3f}({env_enable_sentim_acc.avg:.3f})'.format(
+                        i, env_enable_sentim_loss=env_enable_sentim_loss_meter,
+                        sentim_loss=sentim_loss_meter, env_enable_sentim_acc=env_enable_sentim_acc_meter,
+                        sentim_acc=sentim_acc_meter)
+            logger.info(log_string)
         return sentim_acc_meter.avg
 
 

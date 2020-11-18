@@ -2,6 +2,7 @@ import torch
 from utils.utils import AverageMeter
 from utils.utils import accuracy, consistence, get_optimizer
 import time
+from tqdm import tqdm
 
 def compare(param_group, model):
 	print('compare')
@@ -30,6 +31,58 @@ def compare_param(param, param_new):
 		flag_is = flag_is and (p1 is p2)
 	print(flag, flag_is)
 
+class Base_sentim_Trainer(object):
+	def __init__(self, args, train_loader, model, loss_criterion, optimizers, total_steps, logger, writer=None, tokenizer=None):
+		self.args = args
+		self.train_loader = train_loader
+		self.model = model
+		self.loss_criterion = loss_criterion
+		self.optimizers = optimizers
+		self.total_steps = total_steps
+		self.logger = logger
+		self.global_steps = 0
+		self.tokenizer = tokenizer
+
+	def train_one_epoch(self, device, epoch=0):
+		loss_meter = AverageMeter()
+		acc_meter = AverageMeter()
+		time_meter = AverageMeter()
+		self.model.train()
+		for i, labeled_data in enumerate(self.train_loader):
+			self.optimizers.scheduler_step()
+			# print(optimizers.optimizers['bert'].get_lr()[0])
+			self.model.zero_grad()
+			input_ids, masks, labels = \
+				(labeled_data[k].to(device) for k in ['tokens', 'mask', 'label'])
+			labels = labels.long()
+			# input_ids_s, masks_s, aug_input_ids_s, aug_masks_s, doms_s = \
+			# 	(unlabeled_src_data[k].to(device) for k in ['tokens', 'mask', 'aug_tokens', 'aug_mask', 'domain'])
+			# input_ids_t, masks_t, aug_input_ids_t, aug_masks_t, doms_t = \
+			# 	(unlabeled_tgt_data[k].to(device) for k in ['tokens', 'mask', 'aug_tokens', 'aug_mask', 'domain'])
+			# input_ids, masks, labels = input_ids.long().to(device), masks.long().to(device), labels.long().to(device)
+			start_time = time.time()
+			logits = self.model(input_ids, masks)
+			loss = self.loss_criterion(logits, labels)
+			acc = accuracy(logits.detach().cpu().numpy(), labels.detach().cpu().numpy())
+			self.optimizers.step(loss)
+			end_time = time.time()
+			time_meter.update(end_time - start_time)
+			loss_meter.update(float(loss))
+			acc_meter.update(float(acc))
+
+			if i % self.args.print_freq == 0:
+				log_string = 'Iteration[{0}]\t' \
+					'time: {batch_time.val:.3f}({batch_time.avg:.3f})\t' \
+					'loss: {sentim_loss.val:.3f}({sentim_loss.avg:.3f})\t' \
+					'accuracy: {sentim_acc.val:.3f}({sentim_acc.avg:.3f})'.format(
+						i, batch_time=time_meter,
+						sentim_loss=loss_meter,
+						sentim_acc=acc_meter)
+				self.logger.info(log_string)
+			self.global_steps += 1
+
+		return self.global_steps
+
 
 class sentim_Trainer(object):
 	def __init__(self, args, train_loader, model, loss_criterion, optimizers, total_steps, logger):
@@ -55,25 +108,26 @@ class sentim_Trainer(object):
 		sentim_acc_meter = AverageMeter()
 		time_meter = AverageMeter()
 		model.train()
-		for i, batch_data in enumerate(train_loader):
+		
+		for i,batch_data in enumerate(tqdm(train_loader)):
+			self.optimizers.scheduler_step()
 			# print(optimizers.optimizers['bert'].get_lr()[0])
 			model.zero_grad()
-			tokens, masks, positions, vms, labels = batch_data['token'], batch_data['mask'], \
+			tokens, masks, positions, vms, labels = batch_data['tokens'], batch_data['mask'], \
 				batch_data['pos'], batch_data['vm'], batch_data['label']
 			labels = labels.long().to(device)
 			masks = masks.long().to(device)
-			positions = positions.long().to(device)
-			vms = vms.long().to(device)
+			# positions = positions.long().to(device)
+			# vms = vms.long().to(device)
 			tokens = tokens.long().to(device)
 			start_time = time.time()
 
-			sentim_probs = model(tokens, labels, masks, positions, vms)
-			# print(torch.max(sentim_probs))
+			sentim_probs = model(tokens, masks, pos=positions, vm=vms)
 			sentim_loss = loss_criterion(sentim_probs, labels)
 
-			sentim_acc = accuracy(sentim_probs, labels)
+			sentim_acc = accuracy(sentim_probs.detach().cpu().numpy(), labels.detach().cpu().numpy())
 
-			optimizers.step(sentim_loss, i)
+			optimizers.step(sentim_loss)
 
 			end_time = time.time()
 			time_meter.update(end_time-start_time)
@@ -90,6 +144,16 @@ class sentim_Trainer(object):
 						sentim_acc=sentim_acc_meter)
 				logger.info(log_string)
 			self.global_steps += 1
+
+		logger.info('-----Training epoch summary------')
+		log_string = 'Iteration[{0}]\t' \
+					'time: {batch_time.val:.3f}({batch_time.avg:.3f})\t' \
+					'sentiment_loss: {sentim_loss.val:.3f}({sentim_loss.avg:.3f})\t' \
+					'sentiment_accuracy: {sentim_acc.val:.3f}({sentim_acc.avg:.3f})'.format(
+						i, batch_time=time_meter, 
+						sentim_loss=sentim_loss_meter, 
+						sentim_acc=sentim_acc_meter)
+		logger.info(log_string)
 
 		return self.global_steps
 
@@ -120,31 +184,8 @@ class causal_Trainer(object):
 		env_enable_sentim_loss_meter = AverageMeter()
 		env_enable_sentim_acc_meter = AverageMeter()
 
-		# bert_opt = optimizers[0]
-		# ext_opt = optimizers[1]
-		# sentim_opt = optimizers[2]
-		# env_enable_sentim_opt = optimizers[3]
-
 		model.train()
-
-		# debug
-		# print('trainers')
-		# m = model.children().__next__()
-		# for name, subm in m.named_children():
-		# 	if 'bert' in name:
-		# 		bert = subm
-		# 		break
-		# print(bert)
-		# subm_di
-		# 	if 'embedding' in name:
-		# 		embedding = subm脽
-		# 		break
-
-
-		# param_group = [[p.detach() for p in c.parameters()] for c in m.children()]
-		# assert not consistence([get_optimizer(self.args, p) for p in param_group], model)
 		for i, batch_data in enumerate(train_loader):
-			# print(optimizers.optimizers['bert'].get_lr()[0])
 			model.zero_grad()
 			tokens, masks, positions, vms, augs, labels = batch_data['token'], batch_data['mask'], \
 				batch_data['pos'], batch_data['vm'], batch_data['aug'], batch_data['label']
@@ -188,6 +229,16 @@ class causal_Trainer(object):
 				logger.info(log_string)
 			self.global_steps += 1
 
+
+		logger.info('-----Training epoch summary------')
+		log_string = 'Iteration[{0}]\t' \
+					'time: {batch_time.val:.3f}({batch_time.avg:.3f})\t' \
+					'sentiment_loss: {sentim_loss.val:.3f}({sentim_loss.avg:.3f})\t' \
+					'sentiment_accuracy: {sentim_acc.val:.3f}({sentim_acc.avg:.3f})'.format(
+						i, batch_time=time_meter, 
+						sentim_loss=sentim_loss_meter, 
+						sentim_acc=sentim_acc_meter)
+		logger.info(log_string)
 		return self.global_steps
 
 
