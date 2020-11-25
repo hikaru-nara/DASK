@@ -158,8 +158,9 @@ def bert_preprocess(datum, max_seq_length, tokenizer):
     return datum
 
 def kbert_preprocess(datum, max_seq_length, kg):
-    token_list, position_list, visible_matrix, _ = kg.add_knowledge_with_vm(datum['text'], max_length=max_seq_length)
-    token_list = [CLS_ID] + token_list[:-1]
+    
+    token_list, position_list, visible_matrix, _ = kg.add_knowledge_with_vm(datum['text'], max_length=max_seq_length, add_special_tokens=True)
+    # token_list = [CLS_ID] + token_list[:-2] + [SEP_ID]
     mask = np.array([1 if t != PAD_TOKEN else 0 for t in token_list])
     datum['tokens'] = np.array(token_list)
     datum['pos'] = np.array(position_list)
@@ -182,7 +183,6 @@ class Causal_Train_Dataset(torch.utils.data.Dataset):
     def __getitem__(self, i):
         # 0 ->i
         datum = {key: value[i] for key, value in self.train_data.items()}
-        # datum['text'] = 'I love peking university'
         if self.kg is None:
             datum = bert_preprocess(datum, self.max_seq_length, self.tokenizer)
         else:
@@ -227,7 +227,7 @@ class Causal_Dataset(object):
         self.train_data, self.dev_data = data_reader.read_data()
         self.vocab = vocab
         if args.use_kg:
-            self.kg = KnowledgeGraph(graph_path, predicate=predicate, vocab=self.vocab)
+            self.kg = KnowledgeGraph(args, graph_path, predicate=predicate, vocab=self.vocab)
         else:
             self.kg = None
         self.args = args
@@ -321,7 +321,7 @@ class DA_Dataset(torch.utils.data.Dataset):
         # self.augmenter = augment_factory[args.augmenter](args)
         self.vocab = None
         if args.use_kg:
-            self.kg = KnowledgeGraph(graph_path, predicate=predicate, vocab=self.vocab)
+            self.kg = KnowledgeGraph(args, graph_path, predicate=predicate, vocab=self.vocab)
         else:
             self.kg = None
 
@@ -396,10 +396,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     parser.add_argument("--vocab_path", default=None, type=str)
-    parser.add_argument('--seq_length', default=256, type=int)
+    parser.add_argument('--max_seq_length', default=256, type=int)
     parser.add_argument('--augmenter', default='synonym_substitution')
     parser.add_argument('--aug_rate', default=0.7, help='aug_rate for synonym_substitution')
     parser.add_argument('--use_kg', action='store_true')
+    parser.add_argument('--pos_require_knowledge', type=str, help='the part of speech that \
+        requires kg to add knowledge, choose a subset from [ADJ, ADP, ADV, CONJ, DET, NOUN, \
+        NUM, PRT, PRON, VERB, ., X], split with "," e.g. ADJ,ADP,ADV', default='ADJ,ADV,NOUN')
 
     # parser.add_argument('--')
 
@@ -409,10 +412,14 @@ if __name__ == '__main__':
     # vocab.load(args.vocab_path)
     # args.vocab = vocab
 
-    source_reader = reader_factory['bdek']('books','source')
-    target_reader = reader_factory['bdek']('kitchen','target')
-    dataset = dataset_factory['domain_adaptation'](args, source_reader, target_reader, graph_path=['data/imdb_sub_conceptnet.spo'])
-    train_dataset, dev_dataset, eval_dataset = dataset.split()
+    # source_reader = reader_factory['bdek']('books','source')
+    # target_reader = reader_factory['bdek']('kitchen','target')
+
+    # dataset = dataset_factory['domain_adaptation'](args, source_reader, target_reader, graph_path=['data/imdb_sub_conceptnet.spo'])
+    # train_dataset, dev_dataset, eval_dataset = dataset.split()
+    data_reader = reader_factory['imdb']([0.9, 0.7], False)
+    dataset = dataset_factory['causal_inference'](args, data_reader, graph_path=['data/imdb_sub_conceptnet.spo'])
+    train_dataset, eval_dataset = dataset.split()
     train_sampler = torch.utils.data.RandomSampler(train_dataset)
     # dev_sampler = torch.utils.data.RandomSampler(dev_dataset)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=8, \
@@ -426,10 +433,10 @@ if __name__ == '__main__':
     # nltk.download('punkt')
     from transformers import BertTokenizer
     t = BertTokenizer.from_pretrained('bert-base-uncased')
-    for i, (labeled_batch, unlabeled_batch) in enumerate(train_loader):
+    for i, labeled_batch in enumerate(train_loader):
         print(labeled_batch['tokens'][0])
-        # print(labeled_batch['pos'][0])
-        # print(labeled_batch['vm'][0])
+        print(labeled_batch['pos'][0])
+        print(labeled_batch['vm'][0])
         print(labeled_batch['text'][0])
         print(t.decode(labeled_batch['tokens'][0]))
         # print(labeled_batch['aug_tokens'][0])

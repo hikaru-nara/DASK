@@ -84,6 +84,89 @@ class Base_sentim_Trainer(object):
 		return self.global_steps
 
 
+class kbert_two_stage_sentim_Trainer(object):
+	def __init__(self, args, train_loader, model, loss_criterion, optimizers, total_steps, logger):
+		self.args = args
+		self.train_loader = train_loader
+		self.model = model
+		self.loss_criterion = loss_criterion
+		self.optimizers = optimizers
+		self.total_steps = total_steps
+		self.logger = logger
+		self.global_steps = 0
+
+	def train_one_epoch(self, device):
+		args = self.args
+		train_loader = self.train_loader
+		model = self.model
+		loss_criterion = self.loss_criterion
+		optimizers = self.optimizers
+		total_steps = self.total_steps
+		logger = self.logger
+
+		sentim_loss_meter = AverageMeter()
+		sentim_acc_meter = AverageMeter()
+		time_meter = AverageMeter()
+		model.train()
+		
+		for i,batch_data in enumerate(tqdm(train_loader)):
+			self.optimizers.scheduler_step()
+			# print(optimizers.optimizers['bert'].get_lr()[0])
+			model.zero_grad()
+			tokens_kg, mask_kg, labels, tokens_org, mask_org = batch_data['tokens_kg'], batch_data['mask_kg'], \
+				 batch_data['label'], batch_data['tokens_org'], batch_data['mask_org']
+
+			if self.args.use_kg:
+				positions, vms = batch_data['pos'], batch_data['vm']
+			else:
+				positions, vms = None, None
+			labels = labels.long().to(device)
+			mask_kg = mask_kg.long().to(device)
+			# positions = positions.long().to(device)
+			# vms = vms.long().to(device)
+			tokens_org, mask_org = tokens_org.long().to(device), mask_org.long().to(device)
+			tokens_kg = tokens_kg.long().to(device)
+
+			start_time = time.time()
+
+			sentim_probs = model(tokens_kg, tokens_org, mask_kg, mask_org, positions, vms)
+			sentim_loss = loss_criterion(sentim_probs, labels)
+
+			sentim_acc = accuracy(sentim_probs.detach().cpu().numpy(), labels.detach().cpu().numpy())
+
+			optimizers.step(sentim_loss)
+
+			end_time = time.time()
+			time_meter.update(end_time-start_time)
+			sentim_loss_meter.update(float(sentim_loss))
+			sentim_acc_meter.update(float(sentim_acc))
+
+			if i % self.args.print_freq==0:
+				log_string = 'Iteration[{0}]\t' \
+					'time: {batch_time.val:.3f}({batch_time.avg:.3f})\t' \
+					'sentiment_loss: {sentim_loss.val:.3f}({sentim_loss.avg:.3f})\t' \
+					'sentiment_accuracy: {sentim_acc.val:.3f}({sentim_acc.avg:.3f})'.format(
+						i, batch_time=time_meter, 
+						sentim_loss=sentim_loss_meter, 
+						sentim_acc=sentim_acc_meter)
+				logger.info(log_string)
+			self.global_steps += 1
+
+		logger.info('-----Training epoch summary------')
+		log_string = 'Iteration[{0}]\t' \
+					'time: {batch_time.val:.3f}({batch_time.avg:.3f})\t' \
+					'sentiment_loss: {sentim_loss.val:.3f}({sentim_loss.avg:.3f})\t' \
+					'sentiment_accuracy: {sentim_acc.val:.3f}({sentim_acc.avg:.3f})'.format(
+						i, batch_time=time_meter, 
+						sentim_loss=sentim_loss_meter, 
+						sentim_acc=sentim_acc_meter)
+		logger.info(log_string)
+
+		return self.global_steps
+
+
+
+
 class sentim_Trainer(object):
 	def __init__(self, args, train_loader, model, loss_criterion, optimizers, total_steps, logger):
 		self.args = args
@@ -189,26 +272,31 @@ class causal_Trainer(object):
 		env_enable_sentim_acc_meter = AverageMeter()
 
 		model.train()
-		for i, batch_data in enumerate(train_loader):
+		for i, batch_data in enumerate(tqdm(train_loader)):
+			optimizers.scheduler_step()
 			model.zero_grad()
-			tokens, masks, positions, vms, augs, labels = batch_data['token'], batch_data['mask'], \
-				batch_data['pos'], batch_data['vm'], batch_data['aug'], batch_data['label']
-				
+			tokens, masks, envs, labels = batch_data['tokens'], batch_data['mask'], \
+				 batch_data['env'], batch_data['label']
+			if self.args.use_kg:
+				positions, vms = batch_data['pos'], batch_data['vm']
+				positions = positions.long().to(device)
+				vms = vms.long().to(device)
+			else:
+				positions, vms = None, None
+
 			labels = labels.long().to(device)
 			masks = masks.long().to(device)
-			positions = positions.long().to(device)
-			vms = vms.long().to(device)
-			augs = augs.to(device)
+			envs = envs.to(device)
 			tokens = tokens.long().to(device)
 			start_time = time.time()
 
-			sentim_probs, env_enable_sentim_probs, rationale_mask = model(tokens, masks, positions, vms, augs)
-			
+			sentim_probs, env_enable_sentim_probs, rationale_mask = model(tokens, masks, envs, positions, vms)
+			# print(sentim_probs.shape)
 			extractor_loss, sentim_loss, env_enable_sentim_loss = loss_criterion(sentim_probs, \
 					env_enable_sentim_probs, labels, rationale_mask, masks)
 
-			sentim_acc = accuracy(sentim_probs, labels)
-			env_enable_sentim_acc = accuracy(env_enable_sentim_probs, labels)
+			sentim_acc = accuracy(sentim_probs.detach().cpu().numpy(), labels.detach().cpu().numpy())
+			env_enable_sentim_acc = accuracy(env_enable_sentim_probs.detach().cpu().numpy(), labels.detach().cpu().numpy())
 
 			optimizers.step([extractor_loss, sentim_loss, env_enable_sentim_loss],i)
 
@@ -438,4 +526,5 @@ trainer_factory = {'graph_causal': graph_causal_Trainer,
 				'graph': None,
 				'causal': causal_Trainer,
 				'sentim': sentim_Trainer,
-				'base_DA': base_DA_Trainer}
+				'base_DA': base_DA_Trainer,
+				'kbert_two_stage_sentim': kbert_two_stage_sentim_Trainer}

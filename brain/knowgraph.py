@@ -13,14 +13,16 @@ from utils.utils import standardize
 from uer.utils.constants import *
 from transformers import BertTokenizer
 import re
+import nltk
+from nltk.tokenize import word_tokenize
 
-
+nltk.download('universal_tagset')
 class KnowledgeGraph(object):
     """
     spo_files - list of Path of *.spo files, or default kg name. e.g., ['HowNet']
     """
 
-    def __init__(self, spo_files, use_custom_vocab=False, vocab=None, predicate=True):
+    def __init__(self, args, spo_files, use_custom_vocab=False, vocab=None, predicate=True):
         self.predicate = predicate
         self.spo_file_paths = [config.KGS.get(f, f) for f in spo_files]
         # self.lookup_table = {}
@@ -31,6 +33,9 @@ class KnowledgeGraph(object):
         # else:
         #     self.tokenizer = wt.gpt2_tokenizer()
         self.special_tags = set(config.NEVER_SPLIT_TAG)
+        self.add_kg_pos = args.pos_require_knowledge.split(',')
+        for pos in self.add_kg_pos:
+            assert pos in config.POS_SET
 
     def _create_lookup_table(self):
         lookup_table = {}
@@ -63,7 +68,7 @@ class KnowledgeGraph(object):
                         lookup_table[subj] = set([value])
         return lookup_table
 
-    def add_knowledge_with_vm(self, sentence, max_entities=config.MAX_ENTITIES, add_pad=True, max_length=256):
+    def add_knowledge_with_vm(self, sentence, max_entities=config.MAX_ENTITIES, add_pad=True, max_length=256, add_special_tokens=True):
         '''
         need to tune max_length on bdek dataset; draw the histgram of length and decide a threshold
         '''
@@ -77,12 +82,29 @@ class KnowledgeGraph(object):
         pos_idx = -1
         abs_idx = -1
         abs_idx_src = []
-        split_sent = sentence.split(' ')
-        split_sent = [standardize(token) for token in split_sent]
+        
+        # split_sent = sentence.split(' ')
+        split_sent = word_tokenize(sentence)
+
+        pos_tag = nltk.pos_tag(split_sent, tagset='universal')
+        if add_special_tokens:
+            pos_tag = [(CLS_TOKEN, 'X')] + pos_tag
+            split_sent = [CLS_TOKEN] + split_sent
+        # pos_tag = nltk.pos_tag(split_sent)
+        # print('add knowledge')
+        # print(split_sent)
+        # print(pos_tag)
+        # split_sent = [standardize(token) for token in split_sent]
         # print(split_sent[0])
-        for token in split_sent:
+        for idx, token in enumerate(split_sent):
             # print(max_entities)
-            entities = list(self.lookup_table.get(token, []))[:max_entities]
+            # print(token, pos_tag[idx])
+            # print(self.add_kg_pos)
+            if pos_tag[idx][1] in self.add_kg_pos and token != 'i':
+                # print('add knowledge')
+                entities = list(self.lookup_table.get(token, []))[:max_entities]
+            else:
+                entities = []
             token = self.tokenizer.encode(token.strip(), add_special_tokens=False)
             if len(token)==0:
                 continue
@@ -162,6 +184,7 @@ class KnowledgeGraph(object):
                     visible_matrix[id, visible_abs_idx] = 1
 
         src_length = len(know_sent)
+
         if len(know_sent) < max_length:
             pad_num = max_length - src_length
             know_sent += [PAD_ID] * pad_num
@@ -173,6 +196,30 @@ class KnowledgeGraph(object):
             seg = seg[:max_length]
             pos = pos[:max_length]
             visible_matrix = visible_matrix[:max_length, :max_length]
+        
+        # if len(know_sent) < max_length - 2:
+        #     pad_num = max_length - src_length
+        #     know_sent = [CLS_ID] + know_sent + [SEP_ID]
+        #     know_sent += [PAD_ID] * (pad_num-2)
+        #     pos = [0] + [p+1 for p in pos]
+        #     pos += [max_length - 1] * (pad_num-1)
+        #     visible_matrix = np.pad(visible_matrix, ((1,1),(1,1)), 'constant')
+        #     visible_matrix[0,0] = 1 
+        #     visible_matrix[-1,-1] = 1
+        #     visible_matrix = np.pad(visible_matrix, ((0, pad_num-2), (0, pad_num-2)), 'constant')  # pad 0
+            
+        #     seg += [0] * pad_num
+        # else:
+        #     # if add_special_tokens:
+        #     #     know_sent = [CLS_ID] + know_sent[:max_src_length] + [SEP_ID]
+        #     know_sent = [CLS_ID] + know_sent[:max_length-2] + [SEP_ID]
+        #     seg = seg[:max_length-2]
+        #     pos = [0]+pos[:max_length-2]+[max_length-1]
+        #     visible_matrix = visible_matrix[:max_length-2, :max_length-2]
+        #     visible_matrix = np.pad(visible_matrix, ((1,1),(1,1)), 'constant')
+        #     visible_matrix[0,0] = 1 
+        #     visible_matrix[-1,-1] = 1
+        
         return know_sent, pos, visible_matrix, seg
 
 

@@ -45,7 +45,7 @@ class causal_inference_loss(torch.nn.Module):
 		env_enable_sentim_loss = self.criterion(env_enable_sentim, sentim_label)
 		sparsity_loss = self.sparsity_loss(rationale_mask[:,:,1], padding_mask, self.sparsity_percentage)
 		continuity_loss = self.continuity_loss(rationale_mask[:,:,1])
-		extractor_loss = torch.nn.functional.relu(sentim_loss - env_enable_sentim_loss) + sentim_loss + sparsity_loss + continuity_loss
+		extractor_loss = torch.max((sentim_loss - env_enable_sentim_loss),0)[0] + sentim_loss + sparsity_loss + continuity_loss
 
 		return extractor_loss, sentim_loss, env_enable_sentim_loss
 
@@ -84,6 +84,7 @@ class cross_entropy_loss(torch.nn.Module):
 
 loss_factory = {
 	'causal': causal_inference_loss,
-	'sentim': sentim_loss_ensemble,
-	'base_DA': sentim_loss
+	'sentim': sentim_loss,
+	'base_DA': sentim_loss,
+	'kbert_two_stage_sentim': sentim_loss
 }

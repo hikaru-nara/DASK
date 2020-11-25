@@ -16,8 +16,6 @@ from uer.utils.config import load_hyperparam
 from uer.utils.seed import set_seed
 from uer.model_saver import save_model
 from utils.utils import get_optimizer
-from evaluate import evaluate_one_epoch
-from evaluate import accuracy
 from dataset import dataset_factory, collate_fn_eval
 from trainers import trainer_factory
 from utils.readers import reader_factory
@@ -27,6 +25,7 @@ from optimizers import optimizer_factory
 from loss import loss_factory
 from utils.utils import create_logger, consistence
 from utils.config import load_causal_hyperparam
+from collate_fn import collate_factory
 
 
 if __name__=='__main__':
@@ -63,6 +62,8 @@ if __name__=='__main__':
 	parser.add_argument("--bidirectional", action="store_true", help="Specific to recurrent model.")
 	parser.add_argument("--pooling", choices=["mean", "max", "first", "last"], default="first",
 						help="Pooling type.")
+	parser.add_argument("--stages", type=str, default='6,6', help="stages for two_stage_kbert")
+	parser.add_argument('--fuser', type=str, default='cross-attention', help='fuser method')
 
 	# Subword options.
 	parser.add_argument("--subword_type", choices=["none", "char"], default="none",
@@ -110,11 +111,15 @@ if __name__=='__main__':
 
 	# Evaluation options.
 	parser.add_argument("--mean_reciprocal_rank", action="store_true", help="Evaluation metrics for DBQA dataset.")
+	parser.add_argument('--save_attention_mask', action="store_true", help="save attention mask of all heads from all layers on the first minibatch")
 
 	# kg
 	parser.add_argument("--kg_path", required=True, help="KG path")
 	parser.add_argument("--no_vm", action="store_true", help="Disable the visible_matrix")
 	parser.add_argument('--use_kg', action='store_true', help='use knowledge graph')
+	parser.add_argument('--pos_require_knowledge', type=str, help='the part of speech that \
+		requires kg to add knowledge, choose a subset from [ADJ, ADP, ADV, CONJ, DET, NOUN, \
+		NUM, PRT, PRON, VERB, ., X], split with "," e.g. ADJ,ADP,ADV', default='ADJ,ADV,NOUN')
 
 	# graph-causal-DA overall options
 	parser.add_argument('--task', required=True, type=str, help='[domain_adaptation/causal_inference]')
@@ -144,6 +149,7 @@ if __name__=='__main__':
 	vocab = Vocab()
 	vocab.load(args.vocab_path)
 	args.vocab = vocab
+	args.stages = [eval(n) for n in args.stages.split(',')]
 	# args.target = 'bert'
 	# train_dataset = bdek_train_dataset(args.source, args.target, args.kg_path, args.supervision_rate)
 	# print('train_dataset loaded')
@@ -173,7 +179,7 @@ if __name__=='__main__':
 		train_dataset, _, eval_dataset = dataset.split()
 	elif args.task == 'causal_inference' or args.task == 'sentim':
 
-		data_reader = reader_factory[args.dataset](args.pollution_rate)
+		data_reader = reader_factory[args.dataset](args.pollution_rate, causal=(args.task=='causal_inference'))
 
 		dataset = dataset_factory[args.task](args, data_reader, graph_path=[args.kg_path], vocab=args.vocab)
 		train_dataset, eval_dataset = dataset.split()
@@ -182,12 +188,11 @@ if __name__=='__main__':
 
 	# train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, num_workers=args.num_workers, shuffle=True, collate_fn=collate_fn_eval)
 	# eval_loader = torch.utils.data.DataLoader(eval_dataset, batch_size=args.val_batch_size, num_workers=args.num_workers, collate_fn=collate_fn_eval)
+	collate_fn = collate_factory[args.model_name]
 	train_sampler = torch.utils.data.RandomSampler(train_dataset)
-	eval_sampler = torch.utils.data.RandomSampler(eval_dataset)
 	train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, num_workers=args.num_workers, \
-											    sampler=train_sampler)
-	eval_loader = torch.utils.data.DataLoader(eval_dataset, batch_size=args.batch_size, num_workers=args.num_workers, \
-											   sampler=eval_sampler)
+											    sampler=train_sampler, collate_fn=collate_fn)
+	eval_loader = torch.utils.data.DataLoader(eval_dataset, batch_size=args.batch_size, num_workers=args.num_workers, collate_fn=collate_fn)
 	print('model init')
 	
 	
@@ -197,21 +202,25 @@ if __name__=='__main__':
 	if args.pretrained_model_path is not None:
 		# Initialize with pretrained model.
 		pretrained_state_dict = torch.load(args.pretrained_model_path)
+		if args.model_name == 'kbert_two_stage_sentim':
+			from utils.utils import load_pretrain_for_two_stage_kbert
+			load_pretrain_for_two_stage_kbert(model, pretrained_state_dict)
 		# print(model.state_dict.keys())
-		state_dict = {}
-		for k,v in pretrained_state_dict.items():
-			spk = k.split('.')
-			# if spk[0]=='bert':
-				
-			if spk[-2]=='LayerNorm':
-				spk[-1] = 'weight' if spk[-1]=='gamma' else 'bias'
+		else:
+			state_dict = {}
+			for k,v in pretrained_state_dict.items():
+				spk = k.split('.')
+				# if spk[0]=='bert':
+					
+				if spk[-2]=='LayerNorm':
+					spk[-1] = 'weight' if spk[-1]=='gamma' else 'bias'
 
-			k = '.'.join(spk)
-			state_dict[k]=v
-			
-		# print(pretrained_state_dict.keys())
-		# print('----------------------------')
-		model.load_state_dict(state_dict, strict=False)  
+				k = '.'.join(spk)
+				state_dict[k]=v
+				
+			# print(pretrained_state_dict.keys())
+			# print('----------------------------')
+			model.load_state_dict(state_dict, strict=False)  
 	# model = torch.nn.DataParallel(model, device_ids=device_ids).cuda()
 	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 	if torch.cuda.device_count() > 0:

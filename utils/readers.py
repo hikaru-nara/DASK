@@ -73,7 +73,7 @@ class imdb_reader(object):
     '''
     @ Tian Li
     '''
-    def __init__(self, pollution_rate, causal=True):
+    def __init__(self, pollution_rate, causal=False):
         self.text_path = {'train':'data/imdb/train.tsv', 'dev':'data/imdb/dev.tsv'}
         self.pollution_rate = pollution_rate
         self.causal = causal
@@ -85,8 +85,8 @@ class imdb_reader(object):
         dev_data['text'], dev_data['label'] = self.get_examples(self.text_path['dev'])
 
         if self.causal:
-            train_data['text'], train_data['aug'] = pollute_data(train_data['text'], train_data['label'], self.pollution_rate)
-            dev_data['text'], dev_data['aug'] = pollute_data(dev_data['text'], dev_data['label'], [1. - r for r in self.pollution_rate])
+            train_data['text'], train_data['env'] = pollute_data(train_data['text'], train_data['label'], self.pollution_rate)
+            dev_data['text'], dev_data['env'] = pollute_data(dev_data['text'], dev_data['label'], [1. - r for r in self.pollution_rate])
 
         return train_data, dev_data
 

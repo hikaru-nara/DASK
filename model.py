@@ -54,54 +54,111 @@ class BertSentimClassifier(nn.Module):
 		return logits
 
 
+
+class Attention_Layer(nn.Module):
+	def __init__(self, h_dim):
+		super(Attention_Layer, self).__init__()
+		self.ac = torch.nn.Sequential(
+			nn.Linear(h_dim, h_dim),
+			nn.ReLU(),
+			nn.Linear(h_dim, 2)
+		)
+
+	def forward(self, embedding):
+		# return self.ac1(embedding)
+		
+		attention = self.ac(embedding)
+		tmp = torch.max(attention,-1,keepdim=True)[0]
+		attention_hard = torch.eq(attention, tmp).type_as(attention)
+		tmp = (attention_hard-attention).detach()
+		attention_mask = tmp + attention
+		return embedding * attention_mask[:,:,0].unsqueeze(2), attention_mask
+		# return embedding, attention_mask
+
+
+
+class BertCausal(nn.Module):
+	def __init__(self, args):
+		super(BertCausal, self).__init__()
+		config = BertConfig.from_pretrained('bert-base-uncased')
+		self.bert = BertModel(config=config, add_pooling_layer=False)
+		self.labels_num = 2
+		self.sc = torch.nn.Sequential(
+			nn.Linear(args.hidden_size, args.hidden_size),
+			nn.ReLU(),
+			nn.Linear(args.hidden_size, self.labels_num)
+		)
+		self.env_sc = torch.nn.Sequential(
+			nn.Linear(args.hidden_size+1, args.hidden_size),
+			nn.ReLU(),
+			nn.Linear(args.hidden_size, self.labels_num)
+		)
+		self.causal_masking = Attention_Layer(args.hidden_size)
+		# self.add_module(name='sc', module=classifier1)
+		# self.add_module(name='env_sc', module=classifier2)
+		# self.add_module(name='causal_masking', module=attention)
+
+		self.use_vm = False if args.no_vm else True
+		self.pooling = args.pooling
+		print("[BertClassifier] use visible_matrix: {}".format(self.use_vm))
+
+	def forward(self, src, mask, env, pos=None, vm=None):
+		output = self.bert(src, mask, position_ids=pos, visible_matrix=vm)[0]
+
+		seq_length = src.shape[1]
+		env_masked = env[:,None].repeat(1,seq_length) * mask
+		env_masked = env_masked[:,:,None]
+		masked_output, attention_mask = self.causal_masking(output)
+		assert env.dim()==1
+		env_masked_output = torch.cat([masked_output, env_masked.float()],-1)
+		env_logits = self.env_sc(env_masked_output)
+
+		logits = self.sc(masked_output)
+		if self.pooling == "mean":
+			logits = torch.mean(logits, dim=1)
+			env_logits = torch.mean(env_logits, dim=1)
+		elif self.pooling == "max":
+			logits = torch.max(logits, dim=1)[0]
+			env_logits = torch.max(env_logits, dim=1)[0]
+		elif self.pooling == "last":
+			logits = logits[:, -1, :]
+			env_logits = env_logits[:, -1, :]
+		else:
+			logits = logits[:, 0, :]
+			env_logits = env_logits[:, 0, :]
+
+		return logits, env_logits, attention_mask
+
+
 class BertClassifier(nn.Module):
 	def __init__(self, args):
 		super(BertClassifier, self).__init__()
 		config = BertConfig.from_pretrained('bert-base-uncased')
 		self.bert = BertModel(config=config, add_pooling_layer=False)
-		# self.add_module(name='bert', module=model)
-		# self.embedding = model.embedding
-		# self.encoder = model.encoder
 		self.labels_num = 2
-		classifier = torch.nn.Sequential(
+		self.classifier = torch.nn.Sequential(
 			nn.Linear(args.hidden_size, args.hidden_size),
+			nn.Dropout(args.dropout),
 			nn.ReLU(),
 			nn.Linear(args.hidden_size, self.labels_num)
 		)
-		self.add_module(name='sc', module=classifier)
-		# self.pooling = 'max'
-		# self.output_layer_1 = nn.Linear(args.hidden_size, args.hidden_size)
-		# self.output_layer_2 = nn.Linear(args.hidden_size, 2)
-		# self.softmax = nn.LogSoftmax(dim=-1)
-		# self.criterion = nn.NLLLoss()
+		
 		self.use_vm = False if args.no_vm else True
 		self.pooling = args.pooling
 		print("[BertClassifier] use visible_matrix: {}".format(self.use_vm))
 
-	def forward(self, src, mask, pos=None, vm=None):
+	def forward(self, src, mask, pos=None, vm=None, output_attention=False):
 		"""
 		Args:
 			src: [batch_size x seq_length]
 			label: [batch_size]
 			mask: [batch_size x seq_length]
 		"""
-		# Embedding.
-		# assert pos is None
-		# assert vm is None
-		# modules = {name: module for name, module in self.named_children()}
-		# embedding = modules['bert'].embeddings(src, mask, pos)
-		# if not self.use_vm:
-		# 	vm = None
-		# output = modules['bert'].encoder(embedding, mask, vm)
-		# # emb = self.embedding(src, mask, pos)
-		# # Encoder.
-		
-		# # output = self.encoder(emb, mask, vm)
-		# # Target.
-		# logits = modules['sc'](output)
-		# # loss = self.criterion(self.softmax(logits.view(-1, self.labels_num)), label.view(-1))
-
-		output = self.bert(src, mask, position_ids=pos, visible_matrix=vm)[0]
+		if output_attention:
+			outputs = self.bert(src, mask, position_ids=pos, visible_matrix=vm, output_attentions=output_attention)
+			output, _, all_attentions = outputs[0], outputs[1], outputs[2]
+		else:
+			output = self.bert(src, mask, position_ids=pos, visible_matrix=vm, output_attentions=output_attention)[0]
 		# print(output.shape)
 		# Target.
 		if self.pooling == "mean":
@@ -112,10 +169,91 @@ class BertClassifier(nn.Module):
 			output = output[:, -1, :]
 		else:
 			output = output[:, 0, :]
-		modules = {name: module for name, module in self.named_children()}
-		classifier = modules['sc']
+		
+		if output_attention:
+			
+			return self.classifier(output), list(all_attentions)
+		else:
+			return self.classifier(output)
 
-		return classifier(output)
+
+class linearfuser(nn.Module):
+	def __init__(self, args):
+		super(linearfuser, self).__init__()
+		self.fuser = torch.nn.Sequential(
+				nn.Linear(args.hidden_size*2, args.hidden_size),
+				nn.Dropout(args.dropout),
+				nn.ReLU(),
+				nn.Linear(args.hidden_size, args.hidden_size)
+			)
+
+	def forward(self, output1, output2):
+		output = torch.cat([output1, output2], dim=2)
+		return self.fuser(output)
+
+
+class KBert_two_branch(nn.Module):
+	def __init__(self, args):
+		super(KBert_two_branch, self).__init__()
+		config = BertConfig.from_pretrained('bert-base-uncased')
+		bert_list = nn.ModuleList()
+		for num_layer in args.stages:
+			config.num_hidden_layers = num_layer
+			bert_list.append(BertModel(config=config, add_pooling_layer=False))
+		self.bert = bert_list
+		# self.bert = BertModel(config=config, add_pooling_layer=False)
+		self.labels_num = 2
+		self.classifier = torch.nn.Sequential(
+			nn.Linear(args.hidden_size, args.hidden_size),
+			nn.Dropout(args.dropout),
+			nn.ReLU(),
+			nn.Linear(args.hidden_size, self.labels_num)
+		)
+		fuser = args.fuser
+		if fuser == 'linear':
+			self.fuser = linearfuser(args)
+		elif fuser == 'cross-attention':
+			from pytorch_transformers.kbert_model import BertCrossAttention
+			self.fuser = BertCrossAttention(config)
+		else:
+			raise NotImplementedError
+
+		self.use_vm = False if args.no_vm else True
+		self.pooling = args.pooling
+
+	def forward(self, tokens_kg, tokens_org, mask_kg, mask_org, pos, vm, output_attention=False):
+		"""
+		Args:
+			tokens_kg: [batch_size x seq_length], sentence with knowledge from graph
+			tokens_org: [batch_size x seq_length], sentence without extra knowledge, but contain more part of orginal sentence
+			mask_kg: padding mask for tokens_kg
+			mask_org: padding mask for tokens_org
+			pos: position_id for tokens_kg
+			vm: visible_matrix for tokens_kg
+			output_attention: whether or not to output attention mask for each layer and each attention head
+		"""
+		output_kg = self.bert[0](tokens_kg, mask_kg, position_ids=pos, visible_matrix=vm, output_attentions=output_attention)[0]
+		output_org = self.bert[0](tokens_org, mask_org, output_attentions=output_attention)[0]
+		# B, N, 2C
+		# output_stage1 = torch.cat([output_kg, output_org], dim=2)
+		input_stage2 = self.fuser(output_kg, output_org)
+		output_stage2 = self.bert[1](inputs_embeds=input_stage2)[0] # one extra embedding layer here
+
+		if self.pooling == "mean":
+			output = torch.mean(output_stage2, dim=1)
+		elif self.pooling == "max":
+			output = torch.max(output_stage2, dim=1)[0]
+		elif self.pooling == "last":
+			output = output_stage2[:, -1, :]
+		else:
+			output = output_stage2[:, 0, :]
+		return self.classifier(output)
+		
+		# if output_attention:
+			
+		# 	return self.classifier(output), list(all_attentions)
+		# else:
+		# 	return self.classifier(output)
 
 
 class BertForDA(nn.Module):
@@ -200,23 +338,6 @@ class Sentiment_Classifier(nn.Module):
 
 		return p
 
-
-class Attention_Layer(nn.Module):
-	def __init__(self, h_dim):
-		super(Attention_Layer, self).__init__()
-		self.ac1 = nn.Linear(h_dim,10)
-		self.ac2 = nn.Linear(10,2)
-
-	def forward(self, embedding):
-		# return self.ac1(embedding)
-		feature = self.ac1(embedding)
-		attention = self.ac2(feature)
-		tmp = torch.max(attention,-1,keepdim=True).values
-		attention_hard = torch.eq(attention, tmp).type_as(attention)
-		tmp = (attention_hard-attention).detach()
-		attention_mask = tmp + attention
-		return embedding * attention_mask[:,:,0].unsqueeze(2), attention_mask
-		# return embedding, attention_mask
 
 
 class causal_inference_net(nn.Module):
@@ -369,8 +490,8 @@ class graph_domain_adaptation_net(nn.Module):
 model_factory = {
 				'graph_causal': None,
 				'graph': graph_domain_adaptation_net,
-				'causal': causal_inference_net,
-				# 'sentim': BertClassifier
+				'causal': BertCausal,
+				'kbert_two_stage_sentim': KBert_two_branch,
 				'sentim': BertClassifier,
 				'base_DA': BertClassifier
 				}

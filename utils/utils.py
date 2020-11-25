@@ -23,14 +23,72 @@ import numpy as np
 import math
 from pathlib import Path
 import unidecode
+import pickle
+
+
+def has_digit(wordlist):
+    for i in range(10):
+        for j,m in enumerate(wordlist):
+            if i==m:
+                return j
+    return False
+
+
+def load_pretrain_for_two_stage_kbert(model, pretrained_state_dict):
+    keys = list(pretrained_state_dict.keys())
+    for k in keys:
+        spk = k.split('.')
+        if spk[-2]=='LayerNorm':
+            spk[-1] = 'weight' if spk[-1]=='gamma' else 'bias'
+        if spk[1]=='embeddings':
+            spk.insert(1,'0')
+        
+            params = pretrained_state_dict.pop(k)
+            new_K = '.'.join(spk)
+            pretrained_state_dict[new_K] = params
+
+            spk.pop(1)
+            spk.insert(1,'1')
+            new_K = '.'.join(spk)
+            pretrained_state_dict[new_K] = params
+        elif spk[1]=='encoder':
+            if int(spk[3])<6:
+                spk.insert(1,'0')
+            else:
+                spk[3] = str(int(spk[3])-6)
+                spk.insert(1,'1')
+            params = pretrained_state_dict.pop(k)
+            new_K = '.'.join(spk)
+            pretrained_state_dict[new_K] = params
+    model.load_state_dict(pretrained_state_dict, strict=False)
+
+
+def save_attention_mask(attentions, text, pos, tokens, log_dir):
+    attentions = [a[0,:,:,:] for a in attentions]
+    text = text[0]
+    pos = pos[0,...]
+    tokens = tokens[0,...]
+    with open(os.path.join(log_dir,'attentions.pkl'), 'wb') as f:
+        pickle.dump(attentions, f)
+    with open(os.path.join(log_dir, 'pos.pkl'), 'wb') as f:
+        pickle.dump(pos, f)
+    with open(os.path.join(log_dir, 'tokens.pkl'), 'wb') as f:
+        pickle.dump(tokens, f)
+    with open(os.path.join(log_dir, 'text.pkl'), 'wb') as f:
+        pickle.dump(text, f)
+    print('==>attentions and so forth are saved to {}'.format(log_dir))
+
+
 
 def standardize(word):
     word = unidecode.unidecode(word)
+    print('standardize')
+    print(word)
     result = word.strip('\'')
     tmp=result.find('\'')
     if tmp!=-1:
         result = result[:tmp]
-    return result.lower()
+    return result
 
 def pollute_data(t, y, pollution):
     """
@@ -40,7 +98,7 @@ def pollute_data(t, y, pollution):
         t -- texts (np array)
         y -- labels (np array)
         pollution -- a list of pollution rate for different envs
-            if 2 envs total, e.g. [0.3, 0.7]
+            if 2 envs total, e.g. [0.9, 0.7]
     """
     num_envs = len(pollution)
 
@@ -105,18 +163,18 @@ def pollute_data(t, y, pollution):
 
         if np.random.choice([0, 1], p=[1. - rate, rate]) == 1:
             if y[idx] == 1.:
-                # text = ", " + t_
-                text =  t_ + " ,"
+                text = ", " + t_
+                # text =  t_ + " ,"
             else:
-                # text = ". " + t_
-                text =  t_ + " ."
+                text = ". " + t_
+                # text =  t_ + " ."
         else:
             if y[idx] == 1.:
-                # text = ". " + t_
-                text =  t_ + " ."
+                text = ". " + t_
+                # text =  t_ + " ."
             else:
-                # text = ", " + t_
-                text =  t_ + " ,"
+                text = ", " + t_
+                # text =  t_ + " ,"
         new_t.append(text)
 
     return new_t, envs

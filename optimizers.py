@@ -99,7 +99,7 @@ class causal_optimizer(object):
         default_lr = lr['default']
         self.optimizers = {}
         module_dict = model.named_children()
-
+        self.schedulers = {}
         for name, model in module_dict:
             param_optimizer = list(model.named_parameters())
             no_decay = ['bias', 'gamma', 'beta']
@@ -108,6 +108,9 @@ class causal_optimizer(object):
                         {'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], 'weight_decay_rate': 0.0}
             ]
             self.optimizers[name] = BertAdam(optimizer_grouped_parameters, lr=args.learning_rate, warmup=args.warmup, t_total=total_steps)
+            self.schedulers[name] = get_linear_schedule_with_warmup(self.optimizers[name],
+                                                         num_warmup_steps=args.warmup*total_steps,
+                                                         num_training_steps=total_steps)
             # if 'bert' in name:
             #     param_optimizer = list(model.named_parameters())
             #     no_decay = ['bias', 'gamma', 'beta']
@@ -144,6 +147,10 @@ class causal_optimizer(object):
           loss[2].backward()
           self.optimizers['env_sc'].step()
 
+    def scheduler_step(self):
+        for k in self.schedulers:
+            self.schedulers[k].step()
+
 
 # class sentim_optimizer(object):
 #     def __init__(self, args, module_dict, total_steps):
@@ -176,5 +183,6 @@ class causal_optimizer(object):
 optimizer_factory ={
     'causal': causal_optimizer,
     'sentim': da_optimizer,
-    'base_DA': da_optimizer
+    'base_DA': da_optimizer,
+    'kbert_two_stage_sentim': da_optimizer
 }
