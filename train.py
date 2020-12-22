@@ -16,16 +16,18 @@ from uer.utils.config import load_hyperparam
 from uer.utils.seed import set_seed
 from uer.model_saver import save_model
 from utils.utils import get_optimizer
-from dataset import dataset_factory, collate_fn_eval
+from dataset import dataset_factory
 from trainers import trainer_factory
 from utils.readers import reader_factory
 from model import model_factory
 from evaluator import evaluator_factory
 from optimizers import optimizer_factory
 from loss import loss_factory
-from utils.utils import create_logger, consistence
+from utils.utils import create_logger, consistence, load_pivots
 from utils.config import load_causal_hyperparam
-from collate_fn import collate_factory
+from collate_fn import collate_factory_train,collate_factory_eval
+
+from tensorboardX import SummaryWriter
 
 
 if __name__=='__main__':
@@ -64,6 +66,8 @@ if __name__=='__main__':
 						help="Pooling type.")
 	parser.add_argument("--stages", type=str, default='6,6', help="stages for two_stage_kbert")
 	parser.add_argument('--fuser', type=str, default='cross-attention', help='fuser method')
+	parser.add_argument('--skip_double_embedding', action='store_true', help='whether to skip embedding at stage 2')
+	parser.add_argument('--only_first_vm', action='store_true', help='only use vm in the first layer')
 
 	# Subword options.
 	parser.add_argument("--subword_type", choices=["none", "char"], default="none",
@@ -82,7 +86,6 @@ if __name__=='__main__':
 							 "Word tokenizer supports online word segmentation based on jieba segmentor."
 							 "Space tokenizer segments sentences into words according to space."
 							 )
-	parser.add_argument('--max_seq_length', default=256)
 
 	# Optimizer options.
 	parser.add_argument("--learning_rate", type=float, default=2e-5,
@@ -90,7 +93,7 @@ if __name__=='__main__':
 	parser.add_argument("--warmup", type=float, default=0.1,
 						help="Warm up value.")
 	parser.add_argument('--momentum', default=0.9)
-	parser.add_argument('--weight_decay', default=0.0001)
+	parser.add_argument('--weight_decay', default=0.0001, type=float)
 
 
 	# Training options.
@@ -108,18 +111,24 @@ if __name__=='__main__':
 	parser.add_argument('--fp16', action='store_true', help='use apex fp16 mixprecision training')
 	parser.add_argument('--freeze_bert', action='store_true', help='freeze bert for fine_tune')
 	parser.add_argument('--init', default='normal', type=str, help='Initialize method')
+	parser.add_argument('--gamma', default=1.0, type=float)
 
 	# Evaluation options.
 	parser.add_argument("--mean_reciprocal_rank", action="store_true", help="Evaluation metrics for DBQA dataset.")
 	parser.add_argument('--save_attention_mask', action="store_true", help="save attention mask of all heads from all layers on the first minibatch")
 
 	# kg
-	parser.add_argument("--kg_path", required=True, help="KG path")
+	parser.add_argument("--kg_path", default='', help="KG path")
 	parser.add_argument("--no_vm", action="store_true", help="Disable the visible_matrix")
 	parser.add_argument('--use_kg', action='store_true', help='use knowledge graph')
 	parser.add_argument('--pos_require_knowledge', type=str, help='the part of speech that \
 		requires kg to add knowledge, choose a subset from [ADJ, ADP, ADV, CONJ, DET, NOUN, \
 		NUM, PRT, PRON, VERB, ., X], split with "," e.g. ADJ,ADP,ADV', default='ADJ,ADV,NOUN')
+	parser.add_argument('--use_pivot_kg', action='store_true')
+	parser.add_argument('--num_pivots', type=int, default=2000)
+	parser.add_argument('--min_occur', type=int, default=5)
+
+
 
 	# graph-causal-DA overall options
 	parser.add_argument('--task', required=True, type=str, help='[domain_adaptation/causal_inference]')
@@ -127,6 +136,9 @@ if __name__=='__main__':
 	parser.add_argument('--dataset', type=str, help='task name in dataset_factory')
 	parser.add_argument('--num_gpus', type=int, default=1, help='task name in dataset_factory')
 	parser.add_argument('--num_workers', type=int, default=1, help='num worker for dataloader')
+	parser.add_argument('--sparsity_lambda', type=float, default=1)
+	parser.add_argument('--continuity_lambda', type=float, default=5)
+	parser.add_argument('--diff_lambda', type=float, default=10, help='lambda balance term in loss')
 
 	# DA
 	parser.add_argument('--source', type=str, help='if use bdek dataset, specify with bdek.domain, e.g.\
@@ -154,7 +166,11 @@ if __name__=='__main__':
 	# train_dataset = bdek_train_dataset(args.source, args.target, args.kg_path, args.supervision_rate)
 	# print('train_dataset loaded')
 	# eval_dataset = bdek_eval_dataset(train_dataset.evaluation_data)
-
+	args.kg_path = args.kg_path.split(',\n\t')
+	if args.use_pivot_kg:
+		args.vocab_require_knowledge = load_pivots(args)
+	else:
+		args.vocab_require_knowledge = None
 	if args.task == 'domain_adaptation':
 		source = args.source
 		if '.' in source:
@@ -164,7 +180,7 @@ if __name__=='__main__':
 			domain_name = lst[1]
 			source_reader = reader_factory[dataset_name](domain_name, 'source')
 		else:
-			source_reader = reader_factory[dataset_name]
+			source_reader = reader_factory[args.source]()
 
 		target = args.target
 		if '.' in target:
@@ -173,26 +189,42 @@ if __name__=='__main__':
 			domain_name = lst[1]
 			target_reader = reader_factory[dataset_name](domain_name, 'target')
 		else:
-			target_reader = reader_factory[dataset_name]
+			target_reader = reader_factory[args.target]()
 
-		dataset = dataset_factory[args.task](args, source_reader, target_reader, graph_path=[args.kg_path])
-		train_dataset, _, eval_dataset = dataset.split()
+		dataset = dataset_factory[args.task](args, source_reader, target_reader, graph_path=args.kg_path)
+		train_dataset, dev_dataset, eval_dataset = dataset.split()
+
+		# if '.' in args.dataset:
+		# 	lst = args.dataset.split('.')
+		# 	dname, domname = lst[0], lst[1]
+		# 	data_reader = reader_factory[dname](domname, 'source')
+		# else:
+		# 	data_reader = reader_factory[args.dataset](args.pollution_rate, causal=(args.task=='causal_inference'))
+
+		# dataset = dataset_factory[args.task](args, data_reader, graph_path=args.kg_path, vocab=args.vocab)
+		# train_dataset, dev_dataset, eval_dataset = dataset.split()
 	elif args.task == 'causal_inference' or args.task == 'sentim':
+		if '.' in args.dataset:
+			lst = args.dataset.split('.')
+			dname, domname = lst[0], lst[1]
+			data_reader = reader_factory[dname](domname, 'source')
+		else:
+			data_reader = reader_factory[args.dataset](args.pollution_rate, causal=(args.task=='causal_inference'))
 
-		data_reader = reader_factory[args.dataset](args.pollution_rate, causal=(args.task=='causal_inference'))
-
-		dataset = dataset_factory[args.task](args, data_reader, graph_path=[args.kg_path], vocab=args.vocab)
-		train_dataset, eval_dataset = dataset.split()
+		dataset = dataset_factory[args.task](args, data_reader, graph_path=args.kg_path, vocab=args.vocab)
+		train_dataset, dev_dataset, eval_dataset = dataset.split()
 	# if 'bdek' in source:
 	#     reader = 
 
 	# train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, num_workers=args.num_workers, shuffle=True, collate_fn=collate_fn_eval)
 	# eval_loader = torch.utils.data.DataLoader(eval_dataset, batch_size=args.val_batch_size, num_workers=args.num_workers, collate_fn=collate_fn_eval)
-	collate_fn = collate_factory[args.model_name]
+	collate_fn_train = collate_factory_train[args.model_name]
+	collate_fn_eval = collate_factory_eval[args.model_name]
 	train_sampler = torch.utils.data.RandomSampler(train_dataset)
 	train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, num_workers=args.num_workers, \
-											    sampler=train_sampler, collate_fn=collate_fn)
-	eval_loader = torch.utils.data.DataLoader(eval_dataset, batch_size=args.batch_size, num_workers=args.num_workers, collate_fn=collate_fn)
+											    sampler=train_sampler, collate_fn=collate_fn_train)
+	dev_loader = torch.utils.data.DataLoader(dev_dataset, batch_size=args.batch_size, num_workers=args.num_workers, collate_fn=collate_fn_eval)
+	eval_loader = torch.utils.data.DataLoader(eval_dataset, batch_size=args.batch_size, num_workers=args.num_workers, collate_fn=collate_fn_eval)
 	print('model init')
 	
 	
@@ -252,14 +284,15 @@ if __name__=='__main__':
 	# assert consistence(optimizers, model)
 	print('optimizer num', len(optimizers))
 
-
+	writer = SummaryWriter(log_dir=os.path.join(args.log_dir, 'tensorboard'))
 	logger = create_logger(args.log_dir)
 	logger.info(args)
 
 	criterion = loss_factory[args.model_name](args).to(device)
 
 	total_steps = len(train_dataset)
-	trainer = trainer_factory[args.model_name](args, train_loader, model, criterion, optimizers, total_steps, logger)
+	trainer = trainer_factory[args.model_name](args, train_loader, model, criterion, optimizers, total_steps, logger, writer=writer)
+	dev_evaluator = evaluator_factory[args.model_name](args, dev_loader, model, criterion, logger)
 	evaluator = evaluator_factory[args.model_name](args, eval_loader, model, criterion, logger)
 
 
@@ -280,18 +313,21 @@ if __name__=='__main__':
 
 	
 	global_steps = 0
-	best_acc = 0
+	best_dev_acc = 0
+	best_test_acc = 0
 	for epoch in range(args.epochs_num):
 		logger.info('---------------------EPOCH {}---------------------'.format(epoch))
-		global_steps = trainer.train_one_epoch(device)
-		acc = evaluator.eval_one_epoch(device)
+		global_steps = trainer.train_one_epoch(device,epoch)
+		dev_acc = dev_evaluator.eval_one_epoch(device)
+		test_acc = evaluator.eval_one_epoch(device)
 		# acc = 1.0
-		if acc>best_acc:
-			best_acc = acc
-
+		if dev_acc>best_dev_acc:
+			best_dev_acc = dev_acc
+			best_test_acc = test_acc
 			logger.info('=> saving checkpoint to {}'.format(args.log_dir))
 			torch.save(model.state_dict(), os.path.join(args.log_dir, 'model_best.pth'))
-		logger.info('Best Accuracy is {0:.4f}'.format(best_acc))
+		logger.info('Best dev Accuracy is {0:.4f}'.format(best_dev_acc))
+		logger.info('Corresponding test Accuracy is {0:.4f}'.format(best_test_acc))
 
 	
 

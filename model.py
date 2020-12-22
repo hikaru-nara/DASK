@@ -64,7 +64,7 @@ class Attention_Layer(nn.Module):
 			nn.Linear(h_dim, 2)
 		)
 
-	def forward(self, embedding):
+	def forward(self, embedding, mask):
 		# return self.ac1(embedding)
 		
 		attention = self.ac(embedding)
@@ -72,6 +72,14 @@ class Attention_Layer(nn.Module):
 		attention_hard = torch.eq(attention, tmp).type_as(attention)
 		tmp = (attention_hard-attention).detach()
 		attention_mask = tmp + attention
+
+		all_ones = torch.ones(embedding.shape[:2]).unsqueeze(-1)
+		all_zeros = torch.zeros(all_ones.shape)
+		# print(all_ones.shape, all_zeros.shape, torch.cat([all_zeros, all_ones], dim=-1).shape)
+		# print((attention_mask*mask).shape)
+		# print(((1.0 - mask) * torch.cat([all_zeros, all_ones], dim=-1).cuda()).shape)
+		mask_ = mask.unsqueeze(-1)
+		attention_mask = attention_mask * mask_ + (1.0 - mask_) * torch.cat([all_zeros, all_ones], dim=-1).cuda()
 		return embedding * attention_mask[:,:,0].unsqueeze(2), attention_mask
 		# return embedding, attention_mask
 
@@ -106,26 +114,31 @@ class BertCausal(nn.Module):
 		output = self.bert(src, mask, position_ids=pos, visible_matrix=vm)[0]
 
 		seq_length = src.shape[1]
+		bs = src.shape[0]
 		env_masked = env[:,None].repeat(1,seq_length) * mask
 		env_masked = env_masked[:,:,None]
-		masked_output, attention_mask = self.causal_masking(output)
+		# env_masked = torch.zeros(bs,seq_length,1).cuda()
+		masked_output, attention_mask = self.causal_masking(output, mask)
 		assert env.dim()==1
 		env_masked_output = torch.cat([masked_output, env_masked.float()],-1)
+
+		
+		if self.pooling == "mean":
+			masked_output = torch.mean(masked_output, dim=1)
+			env_masked_output = torch.mean(env_masked_output, dim=1)
+		elif self.pooling == "max":
+			masked_output = torch.max(masked_output, dim=1)[0]
+			env_masked_output = torch.max(env_masked_output, dim=1)[0]
+		elif self.pooling == "last":
+			masked_output = masked_output[:, -1, :]
+			env_masked_output = env_masked_output[:, -1, :]
+		else:
+			masked_output = masked_output[:, 0, :]
+			env_masked_output = env_masked_output[:, 0, :]
+
 		env_logits = self.env_sc(env_masked_output)
 
 		logits = self.sc(masked_output)
-		if self.pooling == "mean":
-			logits = torch.mean(logits, dim=1)
-			env_logits = torch.mean(env_logits, dim=1)
-		elif self.pooling == "max":
-			logits = torch.max(logits, dim=1)[0]
-			env_logits = torch.max(env_logits, dim=1)[0]
-		elif self.pooling == "last":
-			logits = logits[:, -1, :]
-			env_logits = env_logits[:, -1, :]
-		else:
-			logits = logits[:, 0, :]
-			env_logits = env_logits[:, 0, :]
 
 		return logits, env_logits, attention_mask
 
@@ -139,6 +152,7 @@ class BertClassifier(nn.Module):
 		self.classifier = torch.nn.Sequential(
 			nn.Linear(args.hidden_size, args.hidden_size),
 			nn.Dropout(args.dropout),
+			# nn.Identity(),
 			nn.ReLU(),
 			nn.Linear(args.hidden_size, self.labels_num)
 		)
@@ -147,7 +161,7 @@ class BertClassifier(nn.Module):
 		self.pooling = args.pooling
 		print("[BertClassifier] use visible_matrix: {}".format(self.use_vm))
 
-	def forward(self, src, mask, pos=None, vm=None, output_attention=False):
+	def forward(self, src, mask, pos=None, vm=None, output_attention=False, only_first_vm=False):
 		"""
 		Args:
 			src: [batch_size x seq_length]
@@ -155,10 +169,10 @@ class BertClassifier(nn.Module):
 			mask: [batch_size x seq_length]
 		"""
 		if output_attention:
-			outputs = self.bert(src, mask, position_ids=pos, visible_matrix=vm, output_attentions=output_attention)
+			outputs = self.bert(src, mask, position_ids=pos, visible_matrix=vm, output_attentions=output_attention, only_first_vm=only_first_vm)
 			output, _, all_attentions = outputs[0], outputs[1], outputs[2]
 		else:
-			output = self.bert(src, mask, position_ids=pos, visible_matrix=vm, output_attentions=output_attention)[0]
+			output = self.bert(src, mask, position_ids=pos, visible_matrix=vm, output_attentions=output_attention, only_first_vm=only_first_vm)[0]
 		# print(output.shape)
 		# Target.
 		if self.pooling == "mean":
@@ -192,9 +206,9 @@ class linearfuser(nn.Module):
 		return self.fuser(output)
 
 
-class KBert_two_branch(nn.Module):
+class KBert_two_stage(nn.Module):
 	def __init__(self, args):
-		super(KBert_two_branch, self).__init__()
+		super(KBert_two_stage, self).__init__()
 		config = BertConfig.from_pretrained('bert-base-uncased')
 		bert_list = nn.ModuleList()
 		for num_layer in args.stages:
@@ -220,6 +234,7 @@ class KBert_two_branch(nn.Module):
 
 		self.use_vm = False if args.no_vm else True
 		self.pooling = args.pooling
+		self.args = args
 
 	def forward(self, tokens_kg, tokens_org, mask_kg, mask_org, pos, vm, output_attention=False):
 		"""
@@ -237,7 +252,7 @@ class KBert_two_branch(nn.Module):
 		# B, N, 2C
 		# output_stage1 = torch.cat([output_kg, output_org], dim=2)
 		input_stage2 = self.fuser(output_kg, output_org)
-		output_stage2 = self.bert[1](inputs_embeds=input_stage2)[0] # one extra embedding layer here
+		output_stage2 = self.bert[1](inputs_embeds=input_stage2, skip_embedding=self.args.skip_double_embedding)[0] # one extra embedding layer here
 
 		if self.pooling == "mean":
 			output = torch.mean(output_stage2, dim=1)
@@ -487,13 +502,93 @@ class graph_domain_adaptation_net(nn.Module):
 		domain_output = self.domain_classifier(R_feature)
 		return sentiment_output, domain_output
 
+
+
+class GradReverse(Function):
+	"""
+	Extension of grad reverse layer
+	"""
+	@staticmethod
+	def forward(ctx, x, constant):
+		ctx.constant = constant
+		return x.view_as(x)
+
+	@staticmethod
+	def backward(ctx, grad_output):
+		grad_output = grad_output.neg() * ctx.constant
+		return grad_output, None
+
+	def grad_reverse(x, constant):
+		return GradReverse.apply(x, constant)
+
+
+class DANN_kbert(nn.Module):
+	# incomplete
+	def __init__(self, args):
+		super(DANN_kbert, self).__init__()
+		print("Initializing main bert model...")
+		model_name = 'bert-base-uncased'
+		model_config = BertConfig.from_pretrained(model_name)
+		self.bert = BertModel(config=model_config, add_pooling_layer=False)
+		self.labels_num = 2
+		self.cc = torch.nn.Sequential(
+			nn.Linear(args.hidden_size, args.hidden_size),
+			nn.ReLU(),
+			nn.Linear(args.hidden_size, self.labels_num)
+		)
+		self.dc = torch.nn.Sequential(
+			nn.Linear(args.hidden_size, args.hidden_size),
+			nn.ReLU(),
+			nn.Linear(args.hidden_size, 2)
+		)
+		self.pooling = args.pooling
+
+	def feature_extractor(self, tokens, masks, pos, vm):
+		output = self.bert(tokens, masks, position_ids=pos, visible_matrix=vm)[0]
+		if self.pooling == "mean":
+			output = torch.mean(output, dim=1)
+		elif self.pooling == "max":
+			output = torch.max(output, dim=1)[0]
+		elif self.pooling == "last":
+			output = output[:, -1, :]
+		else:
+			output = output[:, 0, :]
+		return output
+
+	def class_classifier(self, input):
+		return self.cc(input)
+
+	def domain_classifier(self, input, constant):
+		input = GradReverse.grad_reverse(input, constant)
+		return self.dc(input)
+
+	def forward(self, input_ids, masks, pos=None, vm=None, input_ids2=None, masks2=None, pos2=None, vm2=None, \
+		constant=None, visualize=False, output_attention=False):
+		# feature of labeled data (source)
+		feature_labeled = self.feature_extractor(input_ids, masks, pos, vm)
+		# compute the class preds of src_feature
+		class_preds = self.class_classifier(feature_labeled)
+		if input_ids2 is None:
+			if visualize is False:
+				return class_preds
+			else:
+				return class_preds, class_preds, feature_labeled
+		# feature of unlabeled data (source and target)
+		feature_unlabeled = self.feature_extractor(input_ids2, masks2, pos2, vm2)
+		# compute the domain preds of src_feature and target_feature
+		labeled_preds = self.domain_classifier(feature_labeled, constant)
+		unlabeled_preds = self.domain_classifier(feature_unlabeled, constant)
+		return class_preds, labeled_preds, unlabeled_preds
+
 model_factory = {
 				'graph_causal': None,
 				'graph': graph_domain_adaptation_net,
 				'causal': BertCausal,
-				'kbert_two_stage_sentim': KBert_two_branch,
+				'kbert_two_stage_sentim': KBert_two_stage,
+				'kbert_two_stage_da': KBert_two_stage,
 				'sentim': BertClassifier,
-				'base_DA': BertClassifier
+				'base_DA': BertClassifier,
+				'DANN_kbert': DANN_kbert
 				}
 
 

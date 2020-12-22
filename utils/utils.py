@@ -24,6 +24,27 @@ import math
 from pathlib import Path
 import unidecode
 import pickle
+import pandas as pd
+
+
+def load_pivots(args):
+    source = args.source
+    target = args.target
+    pivot_file = os.path.join('data', '{0}-{1}'.format(source, target), 'all_pivot_stats.csv')
+    table = pd.read_csv(pivot_file)
+    col = table.columns
+    # data = {'text':[str(t) for t in table['text']]}
+    pivot_num = args.num_pivots
+    pivots = {'word':[],'label':[]}
+    curr_num = 0
+    for i in range(len(table['word'])):
+        if table['src_freq'][i]>args.min_occur and table['tgt_freq'][i]>args.min_occur:
+            curr_num += 1
+            pivots['word'].append(table['word'][i])
+            pivots['label'].append(table['polar'][i])
+        if curr_num == pivot_num:
+            return pivots
+    return pivots
 
 
 def has_digit(wordlist):
@@ -64,19 +85,21 @@ def load_pretrain_for_two_stage_kbert(model, pretrained_state_dict):
 
 
 def save_attention_mask(attentions, text, pos, tokens, log_dir):
-    attentions = [a[0,:,:,:] for a in attentions]
-    text = text[0]
-    pos = pos[0,...]
-    tokens = tokens[0,...]
-    with open(os.path.join(log_dir,'attentions.pkl'), 'wb') as f:
-        pickle.dump(attentions, f)
-    with open(os.path.join(log_dir, 'pos.pkl'), 'wb') as f:
-        pickle.dump(pos, f)
-    with open(os.path.join(log_dir, 'tokens.pkl'), 'wb') as f:
-        pickle.dump(tokens, f)
-    with open(os.path.join(log_dir, 'text.pkl'), 'wb') as f:
-        pickle.dump(text, f)
-    print('==>attentions and so forth are saved to {}'.format(log_dir))
+    batch_size = len(text)
+    for i in range(batch_size):
+        attentions_ = [a[i,:,:,:] for a in attentions]
+        text_ = text[i]
+        pos_ = pos[i,...]
+        tokens_ = tokens[i,...]
+        with open(os.path.join(log_dir,'attentions{}.pkl'.format(i)), 'wb') as f:
+            pickle.dump(attentions_, f)
+        with open(os.path.join(log_dir, 'pos{}.pkl'.format(i)), 'wb') as f:
+            pickle.dump(pos_, f)
+        with open(os.path.join(log_dir, 'tokens{}.pkl'.format(i)), 'wb') as f:
+            pickle.dump(tokens_, f)
+        with open(os.path.join(log_dir, 'text{}.pkl'.format(i)), 'wb') as f:
+            pickle.dump(text_, f)
+        print('==>attentions and so forth are saved to {}'.format(log_dir))
 
 
 

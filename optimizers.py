@@ -100,8 +100,8 @@ class causal_optimizer(object):
         self.optimizers = {}
         module_dict = model.named_children()
         self.schedulers = {}
-        for name, model in module_dict:
-            param_optimizer = list(model.named_parameters())
+        for name, m in module_dict:
+            param_optimizer = list(m.named_parameters())
             no_decay = ['bias', 'gamma', 'beta']
             optimizer_grouped_parameters = [
                         {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], 'weight_decay_rate': 0.01},
@@ -139,6 +139,7 @@ class causal_optimizer(object):
         if path in [0,1,2]:
           loss[0].backward()
           self.optimizers['bert'].step()
+          self.optimizers['causal_masking'].step()
           # self.optimizers['al'].step()
         elif path in [3,4]:
           loss[1].backward()
@@ -184,5 +185,7 @@ optimizer_factory ={
     'causal': causal_optimizer,
     'sentim': da_optimizer,
     'base_DA': da_optimizer,
-    'kbert_two_stage_sentim': da_optimizer
+    'kbert_two_stage_sentim': da_optimizer,
+    'kbert_two_stage_da': da_optimizer,
+    'DANN_kbert': da_optimizer
 }

@@ -4,6 +4,7 @@ import numpy as np
 
 from transformers import BertTokenizer
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+
 def kbert_two_stage_collate_fn(batch_data):
 	max_length = batch_data[0]['tokens'].shape[0]
 	for i,data in enumerate(batch_data):
@@ -34,11 +35,26 @@ def kbert_two_stage_collate_fn(batch_data):
 
 	return batch_data_collated
 
+def kbert_two_stage_collate_fn_2item(data_list):
+	data_list1 = [datum[0] for datum in data_list]
+	data_list2 = [datum[1] for datum in data_list]
+	return kbert_two_stage_collate_fn(data_list1), kbert_two_stage_collate_fn(data_list2)
 
 
-collate_factory={
+collate_factory_train={
 	'sentim': None,
 	'causal': None,
 	'base_DA': None,
-	'kbert_two_stage_sentim': kbert_two_stage_collate_fn
+	'kbert_two_stage_sentim': kbert_two_stage_collate_fn,
+	'kbert_two_stage_da': kbert_two_stage_collate_fn_2item,
+	'DANN_kbert': None
+}
+
+collate_factory_eval={
+	'sentim': None,
+	'causal': None,
+	'base_DA': None,
+	'kbert_two_stage_sentim': kbert_two_stage_collate_fn,
+	'kbert_two_stage_da': kbert_two_stage_collate_fn,
+	'DANN_kbert': None
 }

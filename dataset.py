@@ -17,6 +17,7 @@ import math
 import torch
 from numpy.random import default_rng
 from uer.utils.constants import *
+
 # from augmentor import augment_factory
 
 nltk.download('averaged_perceptron_tagger')
@@ -246,9 +247,10 @@ class Causal_Dataset(object):
             axis=0
         ).astype(np.int32)
 
+        dev_data = {key: [value[i] for i in dev_idx] for key, value in self.dev_data.items()}
         test_data = {key: [value[i] for i in test_idx] for key, value in self.dev_data.items()}
-        return Causal_Train_Dataset(self.train_data, self.kg, self.args.max_seq_length), \
-        Causal_Test_Dataset(test_data, self.kg,self.args.max_seq_length)
+        return Causal_Train_Dataset(self.train_data, self.kg, self.args.seq_length), \
+        Causal_Test_Dataset(dev_data, self.kg,self.args.seq_length), Causal_Test_Dataset(test_data, self.kg,self.args.seq_length)
 
 
 class DA_train_dataset(torch.utils.data.Dataset):
@@ -266,10 +268,12 @@ class DA_train_dataset(torch.utils.data.Dataset):
 
     def __len__(self):
         return max(self.len_labeled, self.len_unlabeled)
+        # return self.len_labeled
 
     def __getitem__(self, i):
         assert self.len_labeled<self.len_unlabeled
         l_ind = i*self.len_labeled//self.len_unlabeled
+        # l_ind = i
 
         labeled_datum = {k: self.labeled_data[k][l_ind] for k in self.labeled_data.keys()}
         if self.kg is None:
@@ -313,7 +317,7 @@ class DA_Dataset(torch.utils.data.Dataset):
     @ Tian Li
     '''
 
-    def __init__(self, args, source_reader, target_reader, graph_path=None, predicate=None, use_custom_vocab=None):
+    def __init__(self, args, source_reader, target_reader, graph_path=None, predicate=True, use_custom_vocab=None):
         super(DA_Dataset, self).__init__()
         self.source_data = source_reader.read_data()  # return a dict {'labeled':data, 'unlabeled':data}
         self.target_data = target_reader.read_data()
@@ -332,8 +336,11 @@ class DA_Dataset(torch.utils.data.Dataset):
         labeled_tgt = self.target_data['labeled']
 
         len_dev = len(labeled_src['text'])
-        dev_data = {k:labeled_src[k][:len_dev//5] for k in labeled_src.keys()}
-        train_labeled = {k:labeled_src[k][len_dev//5:] for k in labeled_src.keys()}
+        inds = list(range(len_dev))
+        # random.shuffle(inds)
+        labeled_src = {k:[labeled_src[k][i] for i in inds] for k in labeled_src.keys()}
+        dev_data = {k:labeled_src[k][len_dev//5*4:] for k in labeled_src.keys()}
+        train_labeled = {k:labeled_src[k][:len_dev//5*4] for k in labeled_src.keys()}
         return DA_train_dataset(train_labeled, unlabeled, self.max_seq_length, self.kg), \
                 DA_test_dataset(dev_data, self.max_seq_length, self.kg), \
                 DA_test_dataset(labeled_tgt, self.max_seq_length, self.kg)
@@ -390,23 +397,71 @@ if __name__ == '__main__':
     from utils.readers import reader_factory
     # from utils.vocab import Vocab
     from utils.constants import *
+    from collate_fn import collate_factory_train, collate_factory_eval
 
     import argparse
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     parser.add_argument("--vocab_path", default=None, type=str)
-    parser.add_argument('--max_seq_length', default=256, type=int)
+    parser.add_argument('--seq_length', default=256, type=int)
     parser.add_argument('--augmenter', default='synonym_substitution')
     parser.add_argument('--aug_rate', default=0.7, help='aug_rate for synonym_substitution')
     parser.add_argument('--use_kg', action='store_true')
+    parser.add_argument('--model', default='base_DA', type=str)
     parser.add_argument('--pos_require_knowledge', type=str, help='the part of speech that \
         requires kg to add knowledge, choose a subset from [ADJ, ADP, ADV, CONJ, DET, NOUN, \
-        NUM, PRT, PRON, VERB, ., X], split with "," e.g. ADJ,ADP,ADV', default='ADJ,ADV,NOUN')
+        NUM, PRT, PRON, VERB, ., X], split with "," e.g. ADJ,ADP,ADV', default='ADJ,ADV')
+    parser.add_argument('--use_pivot_kg', action='store_true')
+    parser.add_argument('--num_pivots', type=int, default=2000)
+    parser.add_argument('--min_occur', type=int, default=5)
+    parser.add_argument('--dataset')
+    parser.add_argument('--task')
+    parser.add_argument('--source')
+    parser.add_argument('--target')
 
     # parser.add_argument('--')
 
     args = parser.parse_args()
+    if args.use_pivot_kg:
+        args.vocab_require_knowledge = load_pivots(args)
+    else:
+        args.vocab_require_knowledge = None
+    args.kg_path = ['data/imdb_sub_conceptnet_new.spo']
+    args.pollution_rate = [0.7,0.9]
+
+    if args.task == 'domain_adaptation':
+        source = args.source
+        if '.' in source:
+            # print('source')
+            lst = source.split('.')
+            dataset_name = lst[0]
+            domain_name = lst[1]
+            source_reader = reader_factory[dataset_name](domain_name, 'source')
+        else:
+            source_reader = reader_factory[args.source]()
+
+        target = args.target
+        if '.' in target:
+            lst = target.split('.')
+            dataset_name = lst[0]
+            domain_name = lst[1]
+            target_reader = reader_factory[dataset_name](domain_name, 'target')
+        else:
+            target_reader = reader_factory[args.target]()
+
+        dataset = dataset_factory[args.task](args, source_reader, target_reader, graph_path=args.kg_path)
+        train_dataset, dev_dataset, eval_dataset = dataset.split()
+    elif args.task == 'causal_inference' or args.task == 'sentim':
+        if '.' in args.dataset:
+            lst = args.dataset.split('.')
+            dname, domname = lst[0], lst[1]
+            data_reader = reader_factory[dname](domname, 'source')
+        else:
+            data_reader = reader_factory[args.dataset](args.pollution_rate, causal=(args.task=='causal_inference'))
+
+        dataset = dataset_factory[args.task](args, data_reader, graph_path=args.kg_path)
+        train_dataset, dev_dataset, eval_dataset = dataset.split()
 
     # vocab = Vocab()
     # vocab.load(args.vocab_path)
@@ -415,17 +470,19 @@ if __name__ == '__main__':
     # source_reader = reader_factory['bdek']('books','source')
     # target_reader = reader_factory['bdek']('kitchen','target')
 
-    # dataset = dataset_factory['domain_adaptation'](args, source_reader, target_reader, graph_path=['data/imdb_sub_conceptnet.spo'])
+    # dataset = dataset_factory['domain_adaptation'](args, source_reader, target_reader, graph_path=['data/imdb_sub_conceptnet_new.spo'])
+    # # print(dataset.target_data['labeled']['text'][0])
     # train_dataset, dev_dataset, eval_dataset = dataset.split()
-    data_reader = reader_factory['imdb']([0.9, 0.7], False)
-    dataset = dataset_factory['causal_inference'](args, data_reader, graph_path=['data/imdb_sub_conceptnet.spo'])
-    train_dataset, eval_dataset = dataset.split()
-    train_sampler = torch.utils.data.RandomSampler(train_dataset)
+    # data_reader = reader_factory['imdb']([0.9, 0.7], False)
+    # dataset = dataset_factory['causal_inference'](args, data_reader, graph_path=['data/imdb_sub_conceptnet.spo'])
+    # train_dataset, dev_dataset, eval_dataset = dataset.split()
+    collate_fn_eval = collate_factory_eval[args.model]
+    collate_fn_train = collate_factory_train[args.model]
+    # train_sampler = torch.utils.data.RandomSampler(train_dataset)
     # dev_sampler = torch.utils.data.RandomSampler(dev_dataset)
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=8, \
-                                               sampler=train_sampler)
-    # dev_loader = torch.utils.data.DataLoader(dev_dataset, batch_size=8, num_workers=2, collate_fn=collate_fn_SSL_dev, sampler=dev_sampler)
-    # eval_loader = torch.utils.data.DataLoader(eval_dataset, batch_size=8, num_workers=2, collate_fn=collate_fn_SSL_eval)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=8, collate_fn=collate_fn_train)
+    dev_loader = torch.utils.data.DataLoader(dev_dataset, batch_size=8, num_workers=0, collate_fn=collate_fn_eval)
+    eval_loader = torch.utils.data.DataLoader(eval_dataset, batch_size=1, num_workers=0, collate_fn=collate_fn_eval)
 
     # tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
     # tokens = tokenizer.encode('I love Peking University. Describe the city you live in.')
@@ -433,12 +490,21 @@ if __name__ == '__main__':
     # nltk.download('punkt')
     from transformers import BertTokenizer
     t = BertTokenizer.from_pretrained('bert-base-uncased')
-    for i, labeled_batch in enumerate(train_loader):
-        print(labeled_batch['tokens'][0])
+    for i, (labeled_batch,_) in enumerate(train_loader):
+        print(labeled_batch.keys())
+        print(labeled_batch['tokens_org'][0])
+        print(labeled_batch['tokens_kg'][0])
         print(labeled_batch['pos'][0])
         print(labeled_batch['vm'][0])
         print(labeled_batch['text'][0])
-        print(t.decode(labeled_batch['tokens'][0]))
+        print(labeled_batch['label'])
+        print(t.decode(labeled_batch['tokens_org'][0]))
+        print(t.decode(labeled_batch['tokens_kg'][0]))
+        # print(labeled_batch['tokens'][0])
+        # print(labeled_batch['pos'][0])
+        # print(labeled_batch['vm'][0][:16,:16])
+        # print(labeled_batch['text'][0])
+        # print(t.decode(labeled_batch['tokens'][0]))
         # print(labeled_batch['aug_tokens'][0])
         # print(unlabeled_src_batch['domain'])
         # print(unlabeled_tgt_batch['domain'])
@@ -456,5 +522,5 @@ if __name__ == '__main__':
         # assert unlabeled_batch['text'][0]!=unlabeled_batch['aug_text'][0]
         # print(labeled_batch['mask'])
         # print(labeled_batch['label'][0])
-        if i==10:
+        if i==1:
             break

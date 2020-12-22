@@ -34,6 +34,10 @@ class KnowledgeGraph(object):
         #     self.tokenizer = wt.gpt2_tokenizer()
         self.special_tags = set(config.NEVER_SPLIT_TAG)
         self.add_kg_pos = args.pos_require_knowledge.split(',')
+        if args.vocab_require_knowledge is not None:
+            self.add_kg_vocab = args.vocab_require_knowledge['word']
+        else:
+            self.add_kg_vocab = None
         for pos in self.add_kg_pos:
             assert pos in config.POS_SET
 
@@ -76,6 +80,7 @@ class KnowledgeGraph(object):
         # 冠词、介词不要
         # 形容词、副词和常规动词，和少量名次 加 kg
         # 加很多个节点，做embedding的平均； bert pretrained embedding，先存起来；
+        # multi stage
         sent_tree = []
         pos_idx_tree = []
         abs_idx_tree = []
@@ -91,20 +96,23 @@ class KnowledgeGraph(object):
             pos_tag = [(CLS_TOKEN, 'X')] + pos_tag
             split_sent = [CLS_TOKEN] + split_sent
         # pos_tag = nltk.pos_tag(split_sent)
-        # print('add knowledge')
-        # print(split_sent)
-        # print(pos_tag)
         # split_sent = [standardize(token) for token in split_sent]
         # print(split_sent[0])
         for idx, token in enumerate(split_sent):
             # print(max_entities)
             # print(token, pos_tag[idx])
             # print(self.add_kg_pos)
-            if pos_tag[idx][1] in self.add_kg_pos and token != 'i':
-                # print('add knowledge')
-                entities = list(self.lookup_table.get(token, []))[:max_entities]
+            if self.add_kg_vocab is None:
+                if pos_tag[idx][1] in self.add_kg_pos and token != 'i':
+                    # print('add knowledge')
+                    entities = list(self.lookup_table.get(token, []))[:max_entities]
+                else:
+                    entities = []
             else:
-                entities = []
+                if token in self.add_kg_vocab:
+                    entities = list(self.lookup_table.get(token, []))[:max_entities]
+                else:
+                    entities = []
             token = self.tokenizer.encode(token.strip(), add_special_tokens=False)
             if len(token)==0:
                 continue

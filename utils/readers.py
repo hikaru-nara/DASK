@@ -122,6 +122,59 @@ class imdb_reader(object):
         return ts, np.array(ys, dtype=np.float32)
 
 
+class imdb_da_reader(object):
+    '''
+    @ Tian Li
+    '''
+    def __init__(self):
+        self.text_path = {'train':'data/imdb/train.tsv', 'dev':'data/imdb/dev.tsv'}
+        # self.pollution_rate = pollution_rate
+        # self.causal = causal
+
+    def read_data(self):
+        train_data= {}
+        dev_data = {}
+        train_data['text'], train_data['label'] = self.get_examples(self.text_path['train'])
+        dev_data['text'], _ = self.get_examples(self.text_path['dev'])
+
+        # if self.causal:
+        #     train_data['text'], train_data['env'] = pollute_data(train_data['text'], train_data['label'], self.pollution_rate)
+        #     dev_data['text'], dev_data['env'] = pollute_data(dev_data['text'], dev_data['label'], [1. - r for r in self.pollution_rate])
+
+        return {'labeled':train_data, 'unlabeled':dev_data}
+
+    def get_examples(self, fpath):
+        """
+        Get data from a tsv file.
+        Input:
+            fpath -- the file path.
+        """
+        n = -1
+        ts = []
+        ys = []
+
+        with open(fpath, "r") as f:
+            reader = csv.reader(f, delimiter="\t", quotechar=None)
+            for line in reader:
+                if n < 0:
+                    # the header of the CSV files
+                    n += 1
+                    continue
+
+                t = line[0]
+                y = line[1]
+                # print('imdb/get_examples/label',y)
+                # print('imdb/get_examples/text',t)
+                ts.append(t)
+                ys.append(y)
+
+                n += 1
+
+        print("Number of examples %d" % n)
+        
+        return ts, np.array(ys, dtype=np.float32)
+
+
 class bdek_reader(object):
     def __init__(self, domain_name, source_or_target):
         '''
@@ -179,9 +232,76 @@ class bdek_reader(object):
         return sentences
 
 
+class bdek_sentim_reader(object):
+    def __init__(self, domain_name, pollution_rate, causal=False):
+        '''
+        class for read raw bdek data from disk; 
+        domain_name in 'books', 'dvd', 'kitchen', 'electronics'; 
+        source_or_target in 'source' or 'target'
+
+        pass an obj of this class to a da_dataset object defined in ../dataset.py
+        '''
+        self.text_paths = {
+                    'positive':join('data/amazon-review-old',domain_name,'positive.parsed'),\
+                    'negative':join('data/amazon-review-old',domain_name,'negative.parsed'),\
+                    'unlabeled':join('data/amazon-review-old',domain_name,'{}UN.txt'.format(domain_name)),\
+                    }
+
+        self.graph_feature_paths = {
+                            'labeled':'graph_features/sf_' + domain_name +'_small_5000.np', \
+                            'unlabeled':'graph_features/sf_' + domain_name +'_test_5000.np', \
+                            }
+        assert source_or_target=='source' or source_or_target=='target'
+        self.domain_label = int(source_or_target=='target')
+
+    def read_data(self):
+        '''
+        major read data procedure; called from da_dataset
+        '''
+        labeled_data = {}
+        unlabeled_data = {}
+        positive_text = self.get_dataset(self.text_paths['positive'])
+        negative_text = self.get_dataset(self.text_paths['negative'])
+        positive_label = [1]*len(positive_text)
+        negative_label = [0]*len(negative_text)
+
+        labeled_data['text'] = positive_text + negative_text
+        labeled_data['label'] = positive_label + negative_label
+        labeled_data['domain'] = [self.domain_label] * len(labeled_data['text'])
+        # labeled_data['graph'] = np.load(open(self.graph_feature_paths['labeled'], 'rb'), allow_pickle=True)
+
+        unlabeled_data['text'] = self.get_dataset(self.text_paths['unlabeled'])
+        unlabeled_data['domain'] = [self.domain_label] * len(unlabeled_data['text'])
+        # unlabeled_data['graph'] = np.load(open(self.graph_feature_paths['unlabeled'], 'rb'), allow_pickle=True)
+
+        data = labeled_data
+        keys = data.keys()
+        len_dev = len(data['text'])
+        inds = range(len_dev)
+        inds.shuffle()
+        print('read_data')
+        print(inds)
+        data = {k:data[k][inds] for k in keys}
+        dev_data = {k:data[k][:len_dev//5] for k in data.keys()}
+        train_labeled = {k:data[k][len_dev//5:] for k in data.keys()}
+        return 
+
+    def get_dataset(self, file_path):
+        '''
+        extract texts from xml format file; see data/books/positive.parsed for an instinct of the format
+        return a list of sentences, where each sentence is a list of words (may contain multiple lines)
+        '''
+        tree = ET.parse(file_path)
+        root = tree.getroot()
+        sentences = []
+        for review in root.iter('review'):
+            sentences.append(review.text)
+        return sentences
 
 
-reader_factory = {'bdek':bdek_reader, 'imdb':imdb_reader, \
+
+
+reader_factory = {'bdek':bdek_reader, 'imdb_da':imdb_da_reader, 'imdb':imdb_reader,\
         'airlines':airlines_reader}
 
 

@@ -23,8 +23,9 @@ from model import model_factory
 from evaluator import evaluator_factory
 from optimizers import optimizer_factory
 from loss import loss_factory
-from utils.utils import create_logger, consistence
+from utils.utils import create_logger, consistence, load_pivots
 from utils.config import load_causal_hyperparam
+from collate_fn import collate_factory_eval
 
 
 if __name__=='__main__':
@@ -61,6 +62,9 @@ if __name__=='__main__':
     parser.add_argument("--bidirectional", action="store_true", help="Specific to recurrent model.")
     parser.add_argument("--pooling", choices=["mean", "max", "first", "last"], default="first",
                         help="Pooling type.")
+    parser.add_argument('--fuser', type=str, default='cross-attention', help='fuser method')
+    parser.add_argument("--stages", type=str, default='6,6', help="stages for two_stage_kbert")
+    parser.add_argument('--skip_double_embedding', action='store_true', help='whether to skip embedding at stage 2')
 
     # Subword options.
     parser.add_argument("--subword_type", choices=["none", "char"], default="none",
@@ -111,7 +115,7 @@ if __name__=='__main__':
     parser.add_argument('--save_attention_mask', action="store_true", help="save attention mask of all heads from all layers on the first minibatch")
 
     # kg
-    parser.add_argument("--kg_path", required=True, help="KG path")
+    parser.add_argument("--kg_path", default='', help="KG path")
     parser.add_argument("--no_vm", action="store_true", help="Disable the visible_matrix")
     parser.add_argument('--use_kg', action='store_true', help='use knowledge graph')
     parser.add_argument('--pos_require_knowledge', type=str, help='the part of speech that \
@@ -130,6 +134,9 @@ if __name__=='__main__':
                         bdek.books')
     parser.add_argument('--target', type=str, help='if use bdek dataset, specify with bdek.domain, e.g.\
                         bdek.books')
+    parser.add_argument('--use_pivot_kg', action='store_true')
+    parser.add_argument('--num_pivots', type=int, default=2000)
+    parser.add_argument('--min_occur', type=int, default=5)
     
     # causal 
     parser.add_argument('--pollution_rate', default=[0.9, 0.7], help='pollution rate in datareader')
@@ -146,11 +153,16 @@ if __name__=='__main__':
     vocab = Vocab()
     vocab.load(args.vocab_path)
     args.vocab = vocab
+    args.stages = [eval(n) for n in args.stages.split(',')]
     # args.target = 'bert'
     # train_dataset = bdek_train_dataset(args.source, args.target, args.kg_path, args.supervision_rate)
     # print('train_dataset loaded')
     # eval_dataset = bdek_eval_dataset(train_dataset.evaluation_data)
-
+    args.kg_path = args.kg_path.split(',\n\t')
+    if args.use_pivot_kg:
+        args.vocab_require_knowledge = load_pivots(args)
+    else:
+        args.vocab_require_knowledge = None
     if args.task == 'domain_adaptation':
         source = args.source
         if '.' in source:
@@ -160,7 +172,7 @@ if __name__=='__main__':
             domain_name = lst[1]
             source_reader = reader_factory[dataset_name](domain_name, 'source')
         else:
-            source_reader = reader_factory[dataset_name]
+            source_reader = reader_factory[args.source]()
 
         target = args.target
         if '.' in target:
@@ -169,18 +181,21 @@ if __name__=='__main__':
             domain_name = lst[1]
             target_reader = reader_factory[dataset_name](domain_name, 'target')
         else:
-            target_reader = reader_factory[dataset_name]
+            target_reader = reader_factory[args.target]()
 
-        dataset = dataset_factory[args.task](args, source_reader, target_reader, graph_path=[args.kg_path])
-        train_dataset, _, eval_dataset = dataset.split()
+        dataset = dataset_factory[args.task](args, source_reader, target_reader, graph_path=args.kg_path)
+        train_dataset, dev_dataset, eval_dataset = dataset.split()
     elif args.task == 'causal_inference' or args.task == 'sentim':
 
         data_reader = reader_factory[args.dataset](args.pollution_rate, causal=(args.task=='causal_inference'))
 
-        dataset = dataset_factory[args.task](args, data_reader, graph_path=[args.kg_path], vocab=args.vocab)
-        train_dataset, eval_dataset = dataset.split()
-    
-    eval_loader = torch.utils.data.DataLoader(eval_dataset, batch_size=args.batch_size, num_workers=args.num_workers)
+        dataset = dataset_factory[args.task](args, data_reader, graph_path=args.kg_path, vocab=args.vocab)
+        train_dataset, dev_dataset, eval_dataset = dataset.split()
+
+    # collate_fn_train = collate_factory_train[args.model_name]
+    collate_fn_eval = collate_factory_eval[args.model_name]
+    dev_loader = torch.utils.data.DataLoader(dev_dataset, batch_size=args.batch_size, num_workers=args.num_workers, collate_fn=collate_fn_eval)
+    eval_loader = torch.utils.data.DataLoader(eval_dataset, batch_size=args.batch_size, num_workers=args.num_workers, collate_fn=collate_fn_eval)
     print('model init')
     
     
@@ -243,6 +258,7 @@ if __name__=='__main__':
     criterion = loss_factory[args.model_name](args).to(device)
 
     total_steps = len(train_dataset)
+    dev_evaluator = evaluator_factory[args.model_name](args, dev_loader, model, criterion, logger)
     evaluator = evaluator_factory[args.model_name](args, eval_loader, model, criterion, logger)
 
 
@@ -266,14 +282,16 @@ if __name__=='__main__':
     best_acc = 0
     for epoch in range(args.epochs_num):
         logger.info('---------------------EPOCH {}---------------------'.format(epoch))
+        dev_acc = dev_evaluator.eval_one_epoch(device)
+        print(dev_acc)
         acc = evaluator.eval_one_epoch(device)
         # acc = 1.0
-        if acc>best_acc:
-            best_acc = acc
+        # if acc>best_acc:
+        #     best_acc = acc
 
-            logger.info('=> saving checkpoint to {}'.format(args.log_dir))
-            torch.save(model.state_dict(), os.path.join(args.log_dir, 'model_best.pth'))
-        logger.info('Best Accuracy is {0:.4f}'.format(best_acc))
+        #     logger.info('=> saving checkpoint to {}'.format(args.log_dir))
+        #     torch.save(model.state_dict(), os.path.join(args.log_dir, 'model_best.pth'))
+        logger.info('Best Accuracy is {0:.4f}'.format(acc))
 
     
 

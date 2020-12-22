@@ -35,6 +35,9 @@ class causal_inference_loss(torch.nn.Module):
 		self.sparsity_loss = cal_sparsity_loss
 		self.continuity_loss = cal_continuity_loss
 		self.sparsity_percentage = args.sparsity_percentage
+		self.sparsity_lambda = args.sparsity_lambda
+		self.continuity_lambda = args.continuity_lambda
+		self.diff_lambda = args.diff_lambda
 
 	def forward(self, sentim, env_enable_sentim, sentim_label, rationale_mask, padding_mask):
 		# print(sentim.shape)
@@ -43,9 +46,12 @@ class causal_inference_loss(torch.nn.Module):
 		# print(sentim.dtype)
 		sentim_loss = self.criterion(sentim, sentim_label)
 		env_enable_sentim_loss = self.criterion(env_enable_sentim, sentim_label)
-		sparsity_loss = self.sparsity_loss(rationale_mask[:,:,1], padding_mask, self.sparsity_percentage)
-		continuity_loss = self.continuity_loss(rationale_mask[:,:,1])
-		extractor_loss = torch.max((sentim_loss - env_enable_sentim_loss),0)[0] + sentim_loss + sparsity_loss + continuity_loss
+		sparsity_loss = self.sparsity_loss(rationale_mask[:,:,0], padding_mask, self.sparsity_percentage)
+		continuity_loss = self.continuity_loss(rationale_mask[:,:,0])
+		extractor_loss = self.diff_lambda * torch.max((sentim_loss - env_enable_sentim_loss),0)[0] + sentim_loss\
+			 + self.sparsity_lambda * sparsity_loss + self.continuity_lambda * continuity_loss
+		# extractor_loss = self.diff_lambda * torch.max((env_enable_sentim_loss - sentim_loss),0)[0] + env_enable_sentim_loss\
+		# 	 + self.sparsity_lambda * sparsity_loss + self.continuity_lambda * continuity_loss
 
 		return extractor_loss, sentim_loss, env_enable_sentim_loss
 
@@ -82,9 +88,27 @@ class cross_entropy_loss(torch.nn.Module):
 		return loss
 
 
+class DANN_loss(torch.nn.Module):
+    def __init__(self, args):
+        super(DANN_loss, self).__init__()
+        self.cross_entropy = cross_entropy_loss()
+
+    def forward(self, class_preds, labels, all_preds, all_dom_labels):
+        class_loss = self.cross_entropy(class_preds, labels)
+        if all_dom_labels is not None:
+            domain_loss = self.cross_entropy(all_preds, all_dom_labels)
+        else:
+            domain_loss = torch.tensor(0.)
+        theta = 1
+        loss = class_loss + theta * domain_loss
+        # print(class_loss.item(), domain_loss.item())
+        return loss, class_loss, domain_loss
+
 loss_factory = {
 	'causal': causal_inference_loss,
 	'sentim': sentim_loss,
 	'base_DA': sentim_loss,
-	'kbert_two_stage_sentim': sentim_loss
+	'kbert_two_stage_sentim': sentim_loss,
+	'kbert_two_stage_da': sentim_loss,
+	'DANN_kbert': DANN_loss
 }
