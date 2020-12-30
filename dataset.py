@@ -176,7 +176,6 @@ def SSL_preprocess(datum, max_seq_length, memory_bank, tokenizer):
     tokens = tokenizer.encode(text, add_special_tokens=True, max_length=max_seq_length, truncation=True)
     ssl_label = [-1]*max_seq_length
     for w,t in memory_bank.pivot2token.items():
-        print(t, tokens)
         start_pos = is_in(t, tokens)
         if start_pos != len(tokens):
             ssl_label[start_pos: start_pos+len(t)] = t
