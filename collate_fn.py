@@ -40,6 +40,16 @@ def kbert_two_stage_collate_fn_2item(data_list):
 	data_list2 = [datum[1] for datum in data_list]
 	return kbert_two_stage_collate_fn(data_list1), kbert_two_stage_collate_fn(data_list2)
 
+def kbert_ssl_collate_fn_3(data_list):
+	data_list1 = [datum[0] for datum in data_list]
+	data_list2 = [datum[1] for datum in data_list]
+	data_list3 = [datum[2] for datum in data_list]
+	return kbert_two_stage_collate_fn(data_list1), kbert_two_stage_collate_fn(data_list2), \
+		kbert_two_stage_collate_fn(data_list3)
+
+# def kbert_ssl_collate_fn_3(data_list):
+
+
 
 collate_factory_train={
 	'sentim': None,
@@ -47,7 +57,8 @@ collate_factory_train={
 	'base_DA': None,
 	'kbert_two_stage_sentim': kbert_two_stage_collate_fn,
 	'kbert_two_stage_da': kbert_two_stage_collate_fn_2item,
-	'DANN_kbert': None
+	'DANN_kbert': None,
+	'kbert_SSL': kbert_ssl_collate_fn_3
 }
 
 collate_factory_eval={
@@ -56,5 +67,6 @@ collate_factory_eval={
 	'base_DA': None,
 	'kbert_two_stage_sentim': kbert_two_stage_collate_fn,
 	'kbert_two_stage_da': kbert_two_stage_collate_fn,
-	'DANN_kbert': None
+	'DANN_kbert': None,
+	'kbert_SSL': kbert_two_stage_collate_fn
 }

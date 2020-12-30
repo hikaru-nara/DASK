@@ -5,14 +5,14 @@ import random
 # from gensim.corpora import Dictionary as gensim_dico
 from brain.knowgraph import KnowledgeGraph
 # from brain.config import *
-from utils.utils import standardize
+from utils.utils import standardize, is_in
 import operator
 import re
 # import xml.etree.ElementTree as ET
 # from wrapper_tokenizer import gpt2_tokenizer
 from transformers import BertTokenizer
 import nltk
-from nltk.tokenize import sent_tokenize
+from nltk.tokenize import sent_tokenize, word_tokenize
 import math
 import torch
 from numpy.random import default_rng
@@ -169,6 +169,22 @@ def kbert_preprocess(datum, max_seq_length, kg):
     datum['mask'] = mask
     return datum
 
+def SSL_preprocess(datum, max_seq_length, memory_bank, tokenizer):
+    text = datum['text'][:max_seq_length]
+    # words = word_tokenize(text)
+
+    tokens = tokenizer.encode(text, add_special_tokens=True, max_length=max_seq_length, truncation=True)
+    ssl_label = [-1]*max_seq_length
+    for w,t in memory_bank.pivot2token.items():
+        print(t, tokens)
+        start_pos = is_in(t, tokens)
+        if start_pos != len(tokens):
+            ssl_label[start_pos: start_pos+len(t)] = t
+
+    datum['ssl_label'] = ssl_label
+    return datum
+
+
 
 class Causal_Train_Dataset(torch.utils.data.Dataset):
     '''
@@ -311,7 +327,6 @@ class DA_test_dataset(torch.utils.data.Dataset):
         return datum
 
 
-
 class DA_Dataset(torch.utils.data.Dataset):
     '''
     @ Tian Li
@@ -344,6 +359,110 @@ class DA_Dataset(torch.utils.data.Dataset):
         return DA_train_dataset(train_labeled, unlabeled, self.max_seq_length, self.kg), \
                 DA_test_dataset(dev_data, self.max_seq_length, self.kg), \
                 DA_test_dataset(labeled_tgt, self.max_seq_length, self.kg)
+
+
+class DA_SSL_train_dataset(torch.utils.data.Dataset):
+    def __init__(self, source_labeled, source_unlabeled, target_unlabeled, max_seq_length, kg, memory_bank):
+        super(DA_SSL_train_dataset, self).__init__()
+        self.source_labeled = source_labeled
+        self.source_unlabeled = source_unlabeled
+        self.target_unlabeled = target_unlabeled
+        self.max_seq_length = max_seq_length
+        self.kg = kg
+        self.memory_bank = memory_bank
+        self.sl_len = len(self.source_labeled['text'])
+        self.su_len = len(self.source_unlabeled['text'])
+        self.tu_len = len(self.target_unlabeled['text'])
+        self.length = max(self.su_len, self.tu_len)
+        self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+
+    def __len__(self):
+        return self.length 
+
+    def __getitem__(self, index):
+        sl_idx = int(index/self.length * self.sl_len)
+        if self.su_len>self.tu_len:
+            su_idx = int(index/self.length * self.su_len)
+            tu_idx = index
+        else:
+            tu_idx = int(index/self.length * self.tu_len)
+            su_idx = index
+
+        labeled_datum = {k: self.source_labeled[k][sl_idx] for k in self.source_labeled.keys()}
+        if self.kg is None:
+            labeled_datum = bert_preprocess(labeled_datum, self.max_seq_length, self.tokenizer)
+        else:
+            labeled_datum = kbert_preprocess(labeled_datum, self.max_seq_length, self.kg)
+        labeled_datum = SSL_preprocess(labeled_datum, self.max_seq_length, self.memory_bank, self.tokenizer)
+
+        src_unlabeled_datum = {k: self.source_unlabeled[k][su_idx] for k in self.source_unlabeled.keys()}
+        if self.kg is None:
+            src_unlabeled_datum = bert_preprocess(src_unlabeled_datum, self.max_seq_length, self.tokenizer)
+        else:
+            src_unlabeled_datum = kbert_preprocess(src_unlabeled_datum, self.max_seq_length, self.kg)
+        src_unlabeled_datum = SSL_preprocess(src_unlabeled_datum, self.max_seq_length, self.memory_bank, self.tokenizer)
+
+        tgt_unlabeled_datum = {k: self.target_unlabeled[k][tu_idx] for k in self.target_unlabeled.keys()}
+        if self.kg is None:
+            tgt_unlabeled_datum = bert_preprocess(tgt_unlabeled_datum, self.max_seq_length, self.tokenizer)
+        else:
+            tgt_unlabeled_datum = kbert_preprocess(tgt_unlabeled_datum, self.max_seq_length, self.kg)
+        tgt_unlabeled_datum = SSL_preprocess(tgt_unlabeled_datum, self.max_seq_length, self.memory_bank, self.tokenizer)
+        return labeled_datum, src_unlabeled_datum, tgt_unlabeled_datum
+
+
+class DA_SSL_eval_dataset(torch.utils.data.Dataset):
+    def __init__(self, labeled, max_seq_length, kg, memory_bank):
+        super(DA_SSL_eval_dataset, self).__init__()
+        self.labeled = labeled
+        self.max_seq_length = max_seq_length
+        self.kg = kg
+        self.memory_bank = memory_bank
+
+    def __len__(self):
+        return len(self.labeled['text'])
+
+    def __getitem__(self, index):
+        datum = {k: self.labeled[k][index] for k in self.labeled.keys()}
+        if self.kg is None:
+            datum = bert_preprocess(datum, self.max_seq_length, self.tokenizer)
+        else:
+            datum = kbert_preprocess(datum, self.max_seq_length, self.kg)
+        datum = SSL_preprocess(datum, self.max_seq_length, self.memory_bank, self.tokenizer)
+        return datum
+
+
+class DA_SSL_dataset(torch.utils.data.Dataset):
+    def __init__(self, args, source_reader, target_reader, graph_path, memory_bank):
+        super(DA_SSL_dataset,self).__init__()
+        self.source_data = source_reader.read_data()
+        self.target_data = target_reader.read_data()
+        self.max_seq_length = args.seq_length
+        self.memory_bank = memory_bank
+        memory_bank.initialize(self.source_data, self.target_data)
+        if args.use_kg:
+            self.kg = KnowledgeGraph(args, graph_path, predicate=predicate, vocab=self.vocab)
+        else:
+            self.kg = None
+
+
+    def split(self):
+        labeled_src = self.source_data['labeled']
+        # keys = self.source_data['unlabeled'].keys()
+        # unlabeled = {k: self.source_data['unlabeled'][k] + self.target_data['unlabeled'][k] for k in keys}
+        unlabeled_src = self.source_data['unlabeled']
+        unlabeled_tgt = self.target_data['unlabeled']
+        labeled_tgt = self.target_data['labeled']
+
+        len_dev = len(labeled_src['text'])
+        # inds = list(range(len_dev))
+        # random.shuffle(inds)
+        # labeled_src = {k:[labeled_src[k][i] for i in inds] for k in labeled_src.keys()}
+        dev_data = {k:labeled_src[k][len_dev//5*4:] for k in labeled_src.keys()}
+        train_labeled = {k:labeled_src[k][:len_dev//5*4] for k in labeled_src.keys()}
+        return DA_SSL_train_dataset(train_labeled, unlabeled_src, unlabeled_tgt, self.max_seq_length, self.kg, self.memory_bank), \
+                DA_SSL_eval_dataset(dev_data, self.max_seq_length, self.kg, self.memory_bank), \
+                DA_SSL_eval_dataset(labeled_tgt, self.max_seq_length, self.kg, self.memory_bank)
 
 
 
@@ -391,14 +510,15 @@ def create_vocab(sentence_list, vocab_size=10000):
 
 dataset_factory = {'causal_inference': Causal_Dataset,
                    'sentim': Causal_Dataset,
-                   'domain_adaptation': DA_Dataset}
+                   'domain_adaptation': DA_Dataset,
+                   'DA_SSL':DA_SSL_dataset}
 
 if __name__ == '__main__':
     from utils.readers import reader_factory
     # from utils.vocab import Vocab
     from utils.constants import *
     from collate_fn import collate_factory_train, collate_factory_eval
-
+    from memory_bank import MemoryBank
     import argparse
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -415,6 +535,7 @@ if __name__ == '__main__':
     parser.add_argument('--use_pivot_kg', action='store_true')
     parser.add_argument('--num_pivots', type=int, default=2000)
     parser.add_argument('--min_occur', type=int, default=5)
+    parser.add_argument('--update_steps', type=int, default=10)
     parser.add_argument('--dataset')
     parser.add_argument('--task')
     parser.add_argument('--source')
@@ -430,7 +551,7 @@ if __name__ == '__main__':
     args.kg_path = ['data/imdb_sub_conceptnet_new.spo']
     args.pollution_rate = [0.7,0.9]
 
-    if args.task == 'domain_adaptation':
+    if args.task == 'domain_adaptation' or args.task=='DA_SSL':
         source = args.source
         if '.' in source:
             # print('source')
@@ -450,7 +571,12 @@ if __name__ == '__main__':
         else:
             target_reader = reader_factory[args.target]()
 
-        dataset = dataset_factory[args.task](args, source_reader, target_reader, graph_path=args.kg_path)
+        if args.task == 'DA_SSL':
+            memory_bank = MemoryBank(args)
+            # memory_bank.initialize()
+            dataset = dataset_factory[args.task](args, source_reader, target_reader, graph_path=args.kg_path, memory_bank=memory_bank)
+        else:
+            dataset = dataset_factory[args.task](args, source_reader, target_reader, graph_path=args.kg_path)
         train_dataset, dev_dataset, eval_dataset = dataset.split()
     elif args.task == 'causal_inference' or args.task == 'sentim':
         if '.' in args.dataset:
@@ -490,16 +616,17 @@ if __name__ == '__main__':
     # nltk.download('punkt')
     from transformers import BertTokenizer
     t = BertTokenizer.from_pretrained('bert-base-uncased')
-    for i, (labeled_batch,_) in enumerate(train_loader):
+    for i, (labeled_batch,_,_) in enumerate(train_loader):
         print(labeled_batch.keys())
         print(labeled_batch['tokens_org'][0])
-        print(labeled_batch['tokens_kg'][0])
-        print(labeled_batch['pos'][0])
-        print(labeled_batch['vm'][0])
+        # print(labeled_batch['tokens_kg'][0])
+        # print(labeled_batch['pos'][0])
+        # print(labeled_batch['vm'][0])
         print(labeled_batch['text'][0])
         print(labeled_batch['label'])
         print(t.decode(labeled_batch['tokens_org'][0]))
-        print(t.decode(labeled_batch['tokens_kg'][0]))
+        print(labeled_batch['ssl_label'][0])
+        # print(t.decode(labeled_batch['tokens_kg'][0]))
         # print(labeled_batch['tokens'][0])
         # print(labeled_batch['pos'][0])
         # print(labeled_batch['vm'][0][:16,:16])
