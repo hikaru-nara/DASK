@@ -108,10 +108,12 @@ class SSL_kbert_loss(torch.nn.Module):
         super(SSL_kbert_loss, self).__init__()
         self.cross_entropy = cross_entropy_loss()
 
-    def forward(self, class_preds, labels, pivot_preds, pivot_labels):
+    def forward(self, class_preds, labels, pivot_preds=None, pivot_labels=None):
+        # print(labels)
+        # print(pivot_labels)
         class_loss = self.cross_entropy(class_preds, labels)
-        if all_dom_labels is not None:
-            ssl_loss = self.cross_entropy(pivot_preds, pivot_labels)
+        if pivot_labels is not None:
+            ssl_loss = 0.01 * self.cross_entropy(pivot_preds, pivot_labels)
         else:
             ssl_loss = torch.tensor(0.)
         loss = class_loss + ssl_loss
