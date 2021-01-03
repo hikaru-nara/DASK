@@ -26,8 +26,11 @@ from loss import loss_factory
 from utils.utils import create_logger, consistence, load_pivots
 from utils.config import load_causal_hyperparam
 from collate_fn import collate_factory_train,collate_factory_eval
+from memory_bank import MemoryBank
 
 from tensorboardX import SummaryWriter
+
+torch.multiprocessing.set_sharing_strategy('file_system')
 
 
 if __name__=='__main__':
@@ -127,7 +130,7 @@ if __name__=='__main__':
 	parser.add_argument('--use_pivot_kg', action='store_true')
 	parser.add_argument('--num_pivots', type=int, default=2000)
 	parser.add_argument('--min_occur', type=int, default=5)
-
+	parser.add_argument('--update_steps', type=int, default=10)
 
 
 	# graph-causal-DA overall options
@@ -151,8 +154,6 @@ if __name__=='__main__':
 	parser.add_argument('--sparsity_percentage', default=0.2, help='hyperparameter in sparsity loss')
 	# parser.add_argument('--repeat', required=True) deprecated
 
-
-
 	args = parser.parse_args()
 
 	# Load the hyperparameters from the config file.
@@ -171,7 +172,7 @@ if __name__=='__main__':
 		args.vocab_require_knowledge = load_pivots(args)
 	else:
 		args.vocab_require_knowledge = None
-	if args.task == 'domain_adaptation':
+	if args.task == 'domain_adaptation' or args.task == 'DA_SSL':
 		source = args.source
 		if '.' in source:
 			# print('source')
@@ -191,7 +192,11 @@ if __name__=='__main__':
 		else:
 			target_reader = reader_factory[args.target]()
 
-		dataset = dataset_factory[args.task](args, source_reader, target_reader, graph_path=args.kg_path)
+		if args.task == 'DA_SSL':
+			memory_bank = MemoryBank(args)
+			dataset = dataset_factory[args.task](args, source_reader, target_reader, graph_path=args.kg_path, memory_bank=memory_bank)
+		else:
+			dataset = dataset_factory[args.task](args, source_reader, target_reader, graph_path=args.kg_path)
 		train_dataset, dev_dataset, eval_dataset = dataset.split()
 
 		# if '.' in args.dataset:

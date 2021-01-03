@@ -75,6 +75,76 @@ class kbert_two_stage_Evaluator(object):
                         sentim_acc=sentim_acc_meter)
             logger.info(log_string)
         return sentim_acc_meter.avg
+
+
+class SSL_kbert_Evaluator(object):
+    '''
+    @tian Li
+    '''
+    def __init__(self, args, eval_loader, model, loss_criterion, logger):
+        self.args = args
+        self.eval_loader = eval_loader
+        self.model = model
+        self.loss_criterion = loss_criterion
+        self.logger = logger
+
+    def eval_one_epoch(self, device):
+        eval_loader = self.eval_loader
+        model = self.model
+        loss_criterion = self.loss_criterion
+        logger = self.logger
+        sentim_acc_meter = AverageMeter()
+        sentim_loss_meter = AverageMeter()
+
+        model.eval()
+
+
+        logger.info('-------Start evaluation-------')
+        with torch.no_grad():
+            for i, batch_data in enumerate(tqdm(eval_loader)):
+                
+                tokens_kg, mask_kg, labels, tokens_org, mask_org = batch_data['tokens_kg'], batch_data['mask_kg'], \
+                 batch_data['label'], batch_data['tokens_org'], batch_data['mask_org']
+
+                if self.args.use_kg:
+                    positions, vms = batch_data['pos'], batch_data['vm']
+                else:
+                    positions, vms = None, None
+                batch_size = labels.shape[0]
+                labels = labels.long().to(device)
+                mask_kg = mask_kg.long().to(device)
+                # positions = positions.long().to(device)
+                # vms = vms.long().to(device)
+                tokens_org, mask_org = tokens_org.long().to(device), mask_org.long().to(device)
+                tokens_kg = tokens_kg.long().to(device)
+
+                logits = model(kg_input=(tokens_kg, mask_kg, positions, vms))
+
+                sentim_loss, _, _ = loss_criterion(logits, labels)
+                
+                sentim_acc = accuracy(logits.detach().cpu().numpy(), labels.detach().cpu().numpy())
+
+                sentim_acc_meter.update(sentim_acc, n=batch_size)
+                sentim_loss_meter.update(sentim_loss, n=batch_size)
+
+                if i % self.args.print_freq==0:
+                    log_string = 'Iteration[{0}]\t' \
+                    'sentiment_loss: {sentim_loss.val:.3f}({sentim_loss.avg:.3f})\t' \
+                    'sentiment_accuracy: {sentim_acc.val:.3f}({sentim_acc.avg:.3f})'.format(
+                        i, 
+                        sentim_loss=sentim_loss_meter,
+                        sentim_acc=sentim_acc_meter)
+                    logger.info(log_string)
+
+            logger.info('-----Evaluation epoch summary------')
+            log_string = 'Iteration[{0}]\t' \
+                    'sentiment_loss: {sentim_loss.val:.3f}({sentim_loss.avg:.3f})\t' \
+                    'sentiment_accuracy: {sentim_acc.val:.3f}({sentim_acc.avg:.3f})'.format(
+                        i, 
+                        sentim_loss=sentim_loss_meter,
+                        sentim_acc=sentim_acc_meter)
+            logger.info(log_string)
+        return sentim_acc_meter.avg
         
 
 class sentim_Evaluator(object):
@@ -361,5 +431,6 @@ evaluator_factory = {
         'base_DA': sentim_Evaluator,
         'kbert_two_stage_sentim': kbert_two_stage_Evaluator,
         'kbert_two_stage_da': kbert_two_stage_Evaluator,
-        'DANN_kbert': DANN_Evaluator
+        'DANN_kbert': DANN_Evaluator,
+        'SSL_kbert': SSL_kbert_Evaluator
         }

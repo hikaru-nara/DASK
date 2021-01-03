@@ -175,12 +175,13 @@ def SSL_preprocess(datum, max_seq_length, memory_bank, tokenizer):
 
     tokens = tokenizer.encode(text, add_special_tokens=True, max_length=max_seq_length, truncation=True)
     ssl_label = [-1]*max_seq_length
+
     for w,t in memory_bank.pivot2token.items():
         start_pos = is_in(t, tokens)
         if start_pos != len(tokens):
             ssl_label[start_pos: start_pos+len(t)] = t
 
-    datum['ssl_label'] = ssl_label
+    datum['ssl_label'] = np.array(ssl_label)
     return datum
 
 
@@ -379,14 +380,17 @@ class DA_SSL_train_dataset(torch.utils.data.Dataset):
         return self.length 
 
     def __getitem__(self, index):
+        import time
+        s = time.time()
         sl_idx = int(index/self.length * self.sl_len)
-        if self.su_len>self.tu_len:
+        # print(self.sl_len, self.su_len, self.tu_len, index)
+        if self.su_len < self.tu_len:
             su_idx = int(index/self.length * self.su_len)
             tu_idx = index
         else:
             tu_idx = int(index/self.length * self.tu_len)
             su_idx = index
-
+        # print(su_idx, tu_idx)
         labeled_datum = {k: self.source_labeled[k][sl_idx] for k in self.source_labeled.keys()}
         if self.kg is None:
             labeled_datum = bert_preprocess(labeled_datum, self.max_seq_length, self.tokenizer)
@@ -427,12 +431,12 @@ class DA_SSL_eval_dataset(torch.utils.data.Dataset):
             datum = bert_preprocess(datum, self.max_seq_length, self.tokenizer)
         else:
             datum = kbert_preprocess(datum, self.max_seq_length, self.kg)
-        datum = SSL_preprocess(datum, self.max_seq_length, self.memory_bank, self.tokenizer)
+        # datum = SSL_preprocess(datum, self.max_seq_length, self.memory_bank, self.tokenizer)
         return datum
 
 
 class DA_SSL_dataset(torch.utils.data.Dataset):
-    def __init__(self, args, source_reader, target_reader, graph_path, memory_bank):
+    def __init__(self, args, source_reader, target_reader, graph_path, memory_bank, predicate=True):
         super(DA_SSL_dataset,self).__init__()
         self.source_data = source_reader.read_data()
         self.target_data = target_reader.read_data()
@@ -440,7 +444,7 @@ class DA_SSL_dataset(torch.utils.data.Dataset):
         self.memory_bank = memory_bank
         memory_bank.initialize(self.source_data, self.target_data)
         if args.use_kg:
-            self.kg = KnowledgeGraph(args, graph_path, predicate=predicate, vocab=self.vocab)
+            self.kg = KnowledgeGraph(args, graph_path, predicate=predicate, vocab=None)
         else:
             self.kg = None
 

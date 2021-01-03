@@ -11,22 +11,22 @@
 #     --gpus 13\
 
 #sentim
-CUDA_VISIBLE_DEVICES='1,2,3,7' python train.py \
-    --config_path ./models/google_config.json \
-    --vocab_path ./models/pytorch-bert-uncased/vocab.txt \
-    --dataset imdb \
-    --model_name sentim \
-    --task sentim \
-    --epochs_num 10 --batch_size 128 --kg_path data/imdb_sub_conceptnet.spo \
-    --log_dir log/sentim_1113 \
-    --num_gpus 4 \
-    --max_seq_length 256 \
-    --learning_rate 2e-5 \
-    --pooling first \
-    --num_workers 24 \
-    --pretrained_model_path ./models/pytorch-bert-uncased/pytorch_model.bin \
-    --print_freq 100 \
-    --use_kg
+# CUDA_VISIBLE_DEVICES='1,2,3,7' python train.py \
+#     --config_path ./models/google_config.json \
+#     --vocab_path ./models/pytorch-bert-uncased/vocab.txt \
+#     --dataset imdb \
+#     --model_name sentim \
+#     --task sentim \
+#     --epochs_num 10 --batch_size 128 --kg_path data/imdb_sub_conceptnet.spo \
+#     --log_dir log/sentim_1113 \
+#     --num_gpus 4 \
+#     --max_seq_length 256 \
+#     --learning_rate 2e-5 \
+#     --pooling first \
+#     --num_workers 24 \
+#     --pretrained_model_path ./models/pytorch-bert-uncased/pytorch_model.bin \
+#     --print_freq 100 \
+#     --use_kg
 #--pooling max \
 # # causal
 # --pretrained_model_path ./models/pytorch-bert-uncased/pytorch_model.bin \
@@ -54,3 +54,25 @@ CUDA_VISIBLE_DEVICES='1,2,3,7' python train.py \
     # --pretrained_model_path ./models/multi_cased_L-12_H-768_A-12/bert_model.ckpt \
     # --config_path ./models/multi_cased_L-12_H-768_A-12/bert_config.json \
     # --vocab_path ./models/multi_cased_L-12_H-768_A-12/vocab.txt \
+
+# SSL DA
+CUDA_VISIBLE_DEVICES='' python3 train.py \
+    --source bdek.books \
+    --target bdek.dvd \
+    --dataset bdek \
+    --model_name SSL_kbert \
+    --task domain_adaptation \
+    --epochs_num 10 --batch_size 2 --kg_path data/imdb_sub_conceptnet.spo \
+    --log_dir log/sentim_1113 \
+    --num_gpus 4 \
+    --seq_length 256 \
+    --learning_rate 2e-5 \
+    --pooling first \
+    --num_workers 24 \
+    --print_freq 100 \
+    --use_kg
+
+    # --pretrained_model_path ./models/pytorch-bert-uncased/pytorch_model.bin \
+    # --config_path ./models/google_config.json \
+    # --vocab_path ./models/pytorch-bert-uncased/vocab.txt \
+

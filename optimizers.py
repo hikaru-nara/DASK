@@ -187,5 +187,6 @@ optimizer_factory ={
     'base_DA': da_optimizer,
     'kbert_two_stage_sentim': da_optimizer,
     'kbert_two_stage_da': da_optimizer,
-    'DANN_kbert': da_optimizer
+    'DANN_kbert': da_optimizer,
+    'SSL_kbert': da_optimizer
 }
