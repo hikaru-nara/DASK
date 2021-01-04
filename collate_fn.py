@@ -28,10 +28,10 @@ def kbert_two_stage_collate_fn(batch_data):
 
 	for k in batch_data_collated:
 		if isinstance(batch_data_collated[k][0], np.ndarray):
-			batch_data_collated[k] = torch.tensor(batch_data_collated[k])
+			batch_data_collated[k] = torch.tensor(batch_data_collated[k], dtype=torch.long)
 		elif isinstance(batch_data_collated[k][0], int) or isinstance(batch_data_collated[k][0], float)\
 			or isinstance(batch_data_collated[k][0], np.int32) or isinstance(batch_data_collated[k][0], np.float32):
-			batch_data_collated[k] = torch.tensor(batch_data_collated[k])
+			batch_data_collated[k] = torch.tensor(batch_data_collated[k], dtype=torch.long)
 
 	return batch_data_collated
 
@@ -58,7 +58,7 @@ collate_factory_train={
 	'kbert_two_stage_sentim': kbert_two_stage_collate_fn,
 	'kbert_two_stage_da': kbert_two_stage_collate_fn_2item,
 	'DANN_kbert': None,
-	'kbert_SSL': kbert_ssl_collate_fn_3
+	'SSL_kbert': kbert_ssl_collate_fn_3
 }
 
 collate_factory_eval={
@@ -68,5 +68,5 @@ collate_factory_eval={
 	'kbert_two_stage_sentim': kbert_two_stage_collate_fn,
 	'kbert_two_stage_da': kbert_two_stage_collate_fn,
 	'DANN_kbert': None,
-	'kbert_SSL': kbert_two_stage_collate_fn
+	'SSL_kbert': kbert_two_stage_collate_fn
 }
