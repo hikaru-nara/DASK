@@ -180,7 +180,7 @@ def SSL_preprocess(datum, max_seq_length, memory_bank, tokenizer):
         if start_pos != len(tokens):
             ssl_label[start_pos: start_pos+len(t)] = t
 
-    datum['ssl_label'] = ssl_label
+    datum['ssl_label'] = np.array(ssl_label)
     return datum
 
 
@@ -625,6 +625,9 @@ if __name__ == '__main__':
         print(labeled_batch['label'])
         print(t.decode(labeled_batch['tokens_org'][0]))
         print(labeled_batch['ssl_label'][0])
+
+        ssl_label = (labeled_batch['ssl_label'][0]!=-1) * labeled_batch['ssl_label'][0]
+        print(t.decode(ssl_label))
         # print(t.decode(labeled_batch['tokens_kg'][0]))
         # print(labeled_batch['tokens'][0])
         # print(labeled_batch['pos'][0])
