@@ -60,7 +60,7 @@ class MemoryBank(object):
 		assert 'parking' in self.source_dict.keys()
 		self.get_pivots()
 
-        def get_pivots(self):
+    def get_pivots(self):
 		'''
 		get the pivot words from the two score dicts
 		'''
