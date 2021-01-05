@@ -59,6 +59,9 @@ class MemoryBank(object):
 		assert 'parking' in common_words
 		assert 'parking' in self.source_dict.keys()
 		self.get_pivots()
+		with open('pivot.txt','w') as f:
+			for w in self.pivots:
+				f.write(w+'\t'+ str(sentiment_score[w])+'\t'+str(self.source_freq[w])+'\t'+str(self.target_freq[w])+ '\n')
 
 	def get_pivots(self):
 		'''
@@ -76,7 +79,7 @@ class MemoryBank(object):
 			score_dict[w] = (self.source_dict[w] + self.target_dict[w])/2
 
 		# step2: return the top $self.num_pivots words
-		sorted_word_score = [k for k, v in sorted(score_dict.items(), key=lambda item: -item[1])]
+		sorted_word_score = [k for k, v in sorted(score_dict.items(), key=lambda item: -abs(item[1]))]
 		# need test
 		self.pivots = sorted_word_score[:self.num_pivots]
 		for p in self.pivots:
