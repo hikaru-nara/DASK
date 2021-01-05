@@ -184,10 +184,6 @@ def SSL_preprocess(datum, max_seq_length, memory_bank, tokenizer):
             tokens[i] = tokenizer.encode('[MASK]')[1] # [101, 103, 102]
     datum['tokens_org'] = tokens
     datum['ssl_label'] = ssl_label
-<<<<<<< HEAD
-    # datum['ssl_label'] = np.array(ssl_label)
-=======
->>>>>>> dad1c79807ef321a3e31679b7a895b566d43a276
     return datum
 
 
