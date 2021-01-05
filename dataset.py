@@ -17,7 +17,7 @@ import math
 import torch
 from numpy.random import default_rng
 from uer.utils.constants import *
-
+import time
 # from augmentor import augment_factory
 
 nltk.download('averaged_perceptron_tagger')
@@ -442,7 +442,7 @@ class DA_SSL_dataset(torch.utils.data.Dataset):
         self.target_data = target_reader.read_data()
         self.max_seq_length = args.seq_length
         self.memory_bank = memory_bank
-        memory_bank.initialize(self.source_data, self.target_data)
+        memory_bank.initialize(self.source_data, self.target_data) # long init time
         if args.use_kg:
             self.kg = KnowledgeGraph(args, graph_path, predicate=predicate, vocab=None)
         else:
@@ -576,7 +576,6 @@ if __name__ == '__main__':
 
         if args.task == 'DA_SSL':
             memory_bank = MemoryBank(args)
-            # memory_bank.initialize()
             dataset = dataset_factory[args.task](args, source_reader, target_reader, graph_path=args.kg_path, memory_bank=memory_bank)
         else:
             dataset = dataset_factory[args.task](args, source_reader, target_reader, graph_path=args.kg_path)
