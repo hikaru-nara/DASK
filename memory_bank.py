@@ -60,7 +60,7 @@ class MemoryBank(object):
 		assert 'parking' in self.source_dict.keys()
 		self.get_pivots()
 
-	def get_pivots(self):
+        def get_pivots(self):
 		'''
 		get the pivot words from the two score dicts
 		'''
@@ -76,8 +76,8 @@ class MemoryBank(object):
 			score_dict[w] = (self.source_dict[w] + self.target_dict[w])/2
 
 		# step2: return the top $self.num_pivots words
-		sorted_word_score = [k for k, v in sorted(score_dict.items(), key=lambda item: -item[1])]
-		# need test
+
+		sorted_word_score = [k for k, v in sorted(score_dict.items(), key=lambda item: -abs(item[1]))]
 		self.pivots = sorted_word_score[:self.num_pivots]
 		for p in self.pivots:
 			if not p in self.pivot2token:

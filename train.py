@@ -30,6 +30,8 @@ from memory_bank import MemoryBank
 
 from tensorboardX import SummaryWriter
 
+torch.multiprocessing.set_sharing_strategy('file_system')
+
 
 if __name__=='__main__':
 	parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)

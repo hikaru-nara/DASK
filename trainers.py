@@ -9,8 +9,7 @@ import numpy as np
 def compare(param_group, model):
 	print('compare')
 	m = model.children().__next__()
-	param_group_new = [c.parameters() for c in m.children()]
-	print(len(param_group_new))
+print(len(param_group_new))
 	for i,(p1,p2) in enumerate(zip(param_group, param_group_new)):
 		# print(len(p1))
 		for j,(pi1, pi2) in enumerate(zip(p1, p2)):
@@ -723,21 +722,14 @@ class SSL_kbert_Trainer(object):
 			self.optimizers.scheduler_step()
 			# print(optimizers.optimizers['bert'].get_lr()[0])
 			model.zero_grad()
-			if self.args.use_kg:
-				tokens_kg1, mask_kg1, pos1, vm1, tokens_org1, mask_org1, ssl_label1, labels = \
-					(labeled_batch[k].to(device) for k in ['tokens_kg', 'mask_kg', 'pos', 'vm', 'tokens_org', 'mask_org', 'ssl_label', 'label'])
-				tokens_kg2, mask_kg2, pos2, vm2, tokens_org2, mask_org2, ssl_label2 = \
-					(src_unlabeled_batch[k].to(device) for k in ['tokens_kg', 'mask_kg', 'pos', 'vm', 'tokens_org', 'mask_org', 'ssl_label'])
-				tokens_kg3, mask_kg3, pos3, vm3, tokens_org3, mask_org3, ssl_label3 = \
-					(tgt_unlabeled_batch[k].to(device) for k in ['tokens_kg', 'mask_kg', 'pos', 'vm', 'tokens_org', 'mask_org', 'ssl_label'])
-			else:
-				tokens_kg1, mask_kg1, tokens_org1, mask_org1, ssl_label1, labels = \
-					(labeled_batch[k].to(device) for k in ['tokens_kg', 'mask_kg', 'tokens_org', 'mask_org', 'ssl_label', 'label'])
-				tokens_kg2, mask_kg2, tokens_org2, mask_org2, ssl_label2 = \
-					(src_unlabeled_batch[k].to(device) for k in ['tokens_kg', 'mask_kg', 'tokens_org', 'mask_org', 'ssl_label'])
-				tokens_kg3, mask_kg3, tokens_org3, mask_org3, ssl_label3 = \
-					(tgt_unlabeled_batch[k].to(device) for k in ['tokens_kg', 'mask_kg', 'tokens_org', 'mask_org', 'ssl_label'])
-				pos1, vm1 = None, None
+			tokens_kg1, mask_kg1, pos1, vm1, tokens_org1, mask_org1, ssl_label1, labels = \
+				(labeled_batch[k].to(device) for k in ['tokens_kg', 'mask_kg', 'pos', 'vm', 'tokens_org', 'mask_org', 'ssl_label', 'label'])
+			tokens_kg2, mask_kg2, pos2, vm2, tokens_org2, mask_org2, ssl_label2 = \
+				(src_unlabeled_batch[k].to(device) for k in ['tokens_kg', 'mask_kg', 'pos', 'vm', 'tokens_org', 'mask_org', 'ssl_label'])
+			tokens_kg3, mask_kg3, pos3, vm3, tokens_org3, mask_org3, ssl_label3 = \
+				(tgt_unlabeled_batch[k].to(device) for k in ['tokens_kg', 'mask_kg', 'pos', 'vm', 'tokens_org', 'mask_org', 'ssl_label'])
+			
+
 			tokens_org = torch.cat([tokens_org1, tokens_org2, tokens_org3], dim=0)
 			mask_org = torch.cat([mask_org1, mask_org2, mask_org3], dim=0)
 			ssl_label = torch.cat([ssl_label1, ssl_label2, ssl_label3], dim=0).view(-1)

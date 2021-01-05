@@ -17,7 +17,7 @@ import math
 import torch
 from numpy.random import default_rng
 from uer.utils.constants import *
-
+import time
 # from augmentor import augment_factory
 
 nltk.download('averaged_perceptron_tagger')
@@ -170,12 +170,12 @@ def kbert_preprocess(datum, max_seq_length, kg):
     return datum
 
 def SSL_preprocess(datum, max_seq_length, memory_bank, tokenizer):
+
     # text = datum['text'][:max_seq_length]
     # words = word_tokenize(text)
 
     tokens = tokenizer.encode(datum['text'], add_special_tokens=True, max_length=max_seq_length, truncation=True)
     ssl_label = [-1] * len(tokens)
-
     for w,t in memory_bank.pivot2token.items():
         start_pos = is_in(t, tokens)
         if start_pos != len(tokens):
@@ -188,6 +188,7 @@ def SSL_preprocess(datum, max_seq_length, memory_bank, tokenizer):
             tokens[i] = tokenizer.encode('[MASK]')[1] # [101, 103, 102]
     datum['tokens_org'] = tokens
     datum['ssl_label'] = ssl_label
+    # datum['ssl_label'] = np.array(ssl_label)
     return datum
 
 
@@ -438,7 +439,7 @@ class DA_SSL_eval_dataset(torch.utils.data.Dataset):
             datum = bert_preprocess(datum, self.max_seq_length, self.tokenizer)
         else:
             datum = kbert_preprocess(datum, self.max_seq_length, self.kg)
-        datum = SSL_preprocess(datum, self.max_seq_length, self.memory_bank, self.tokenizer)
+        # datum = SSL_preprocess(datum, self.max_seq_length, self.memory_bank, self.tokenizer)
         return datum
 
 
@@ -449,6 +450,7 @@ class DA_SSL_dataset(torch.utils.data.Dataset):
         self.target_data = target_reader.read_data()
         self.max_seq_length = args.seq_length
         self.memory_bank = memory_bank
+
         memory_bank.initialize(self.source_data, self.target_data)
         if args.use_kg:
             self.kg = KnowledgeGraph(args, graph_path, predicate=predicate, vocab=None)
@@ -583,7 +585,6 @@ if __name__ == '__main__':
 
         if args.task == 'DA_SSL':
             memory_bank = MemoryBank(args)
-            # memory_bank.initialize()
             dataset = dataset_factory[args.task](args, source_reader, target_reader, graph_path=args.kg_path, memory_bank=memory_bank)
         else:
             dataset = dataset_factory[args.task](args, source_reader, target_reader, graph_path=args.kg_path)
@@ -636,6 +637,8 @@ if __name__ == '__main__':
         print(labeled_batch['label'])
         print(t.decode(labeled_batch['tokens_org'][0]))
         print(labeled_batch['ssl_label'][0])
+        ssl_label = (labeled_batch['ssl_label'][0]!=-1) * labeled_batch['ssl_label'][0]
+        print(t.decode(ssl_label))
         # print(t.decode(labeled_batch['tokens_kg'][0]))
         # print(labeled_batch['tokens'][0])
         # print(labeled_batch['pos'][0])

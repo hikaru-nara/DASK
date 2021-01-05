@@ -32,6 +32,7 @@ def extract_word_freq(sentences):
     for s in sentences:
         words = word_tokenize(s)
         for w in words:
+            w = w.lower()
             if not w in freq_dict:
                 freq_dict[w] = 1
             else:
@@ -43,6 +44,7 @@ def sentiment_score_init(source_labeled_text,source_label):
     word_sentiment_count = {}
     for sentence, label in zip(source_labeled_text,source_label):
         for word in word_tokenize(sentence):
+            word = word.lower()
             if word in word_count:
                 word_count[word] += 1
                 if label==1:
