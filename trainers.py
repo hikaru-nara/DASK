@@ -6,32 +6,6 @@ from tqdm import tqdm
 import numpy as np 
 
 
-def compare(param_group, model):
-	print('compare')
-	m = model.children().__next__()
-print(len(param_group_new))
-	for i,(p1,p2) in enumerate(zip(param_group, param_group_new)):
-		# print(len(p1))
-		for j,(pi1, pi2) in enumerate(zip(p1, p2)):
-			print(i, j, torch.eq(pi1, pi2).all())
-		# print(len(p1), len(p2))
-		# torch.all(torch.eq(p1,p2))
-
-def compare2(param_group, opt):
-	print('compare2')
-	param_o = opt.param_groups[0]['params']
-	for p1, p2 in zip(param_group, param_o):
-		print(torch.eq(p1,p2).all())
-
-def compare_param(param, param_new):
-	print('compare_param')
-	flag = True
-	flag_is = True
-	for p1, p2 in zip(param, param_new):
-		flag = flag and torch.eq(p1,p2).all().item()
-		flag_is = flag_is and (p1 is p2)
-	print(flag, flag_is)
-
 class Base_sentim_Trainer(object):
 	def __init__(self, args, train_loader, model, loss_criterion, optimizers, total_steps, logger, writer=None, tokenizer=None):
 		self.args = args
