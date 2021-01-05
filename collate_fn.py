@@ -13,13 +13,17 @@ def kbert_two_stage_collate_fn(batch_data):
 		batch_data[i]['tokens_kg'] = tokens_kg
 		batch_data[i]['mask_kg'] = mask_kg
 
-		tokens_org = tokenizer.encode(data['text'], add_special_tokens=True, max_length=max_length,truncation=True)
+		# tokens_org = tokenizer.encode(data['text'], add_special_tokens=True, max_length=max_length,truncation=True)
+		tokens_org = batch_data[i]['tokens_org']
 		pad_num = max_length-len(tokens_org)
 		if pad_num>0:
 			tokens_org.extend([0 for _ in range(pad_num)])
+			if 'ssl_label' in batch_data[i]:
+				batch_data[i]['ssl_label'].extend([-1 for _ in range(pad_num)])
 		mask_org = [1 if tokenid!=0 else 0 for tokenid in tokens_org]
 		batch_data[i]['mask_org'] = np.array(mask_org)
 		batch_data[i]['tokens_org'] = np.array(tokens_org)
+		batch_data[i]['ssl_label'] = np.array(batch_data[i]['ssl_label'])
 
 	keys = list(batch_data[0].keys())
 	batch_data_collated = {}

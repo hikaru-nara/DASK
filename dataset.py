@@ -170,18 +170,24 @@ def kbert_preprocess(datum, max_seq_length, kg):
     return datum
 
 def SSL_preprocess(datum, max_seq_length, memory_bank, tokenizer):
-    text = datum['text'][:max_seq_length]
+    # text = datum['text'][:max_seq_length]
     # words = word_tokenize(text)
 
-    tokens = tokenizer.encode(text, add_special_tokens=True, max_length=max_seq_length, truncation=True)
-    ssl_label = [-1]*max_seq_length
+    tokens = tokenizer.encode(datum['text'], add_special_tokens=True, max_length=max_seq_length, truncation=True)
+    ssl_label = [-1] * len(tokens)
 
     for w,t in memory_bank.pivot2token.items():
         start_pos = is_in(t, tokens)
         if start_pos != len(tokens):
             ssl_label[start_pos: start_pos+len(t)] = t
 
-    datum['ssl_label'] = np.array(ssl_label)
+    assert len(tokens) == len(ssl_label)
+    # add [MASK] tag
+    for i, l in enumerate(ssl_label):
+        if l > 0:
+            tokens[i] = tokenizer.encode('[MASK]')[1] # [101, 103, 102]
+    datum['tokens_org'] = tokens
+    datum['ssl_label'] = ssl_label
     return datum
 
 
@@ -421,6 +427,7 @@ class DA_SSL_eval_dataset(torch.utils.data.Dataset):
         self.max_seq_length = max_seq_length
         self.kg = kg
         self.memory_bank = memory_bank
+        self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 
     def __len__(self):
         return len(self.labeled['text'])
@@ -431,7 +438,7 @@ class DA_SSL_eval_dataset(torch.utils.data.Dataset):
             datum = bert_preprocess(datum, self.max_seq_length, self.tokenizer)
         else:
             datum = kbert_preprocess(datum, self.max_seq_length, self.kg)
-        # datum = SSL_preprocess(datum, self.max_seq_length, self.memory_bank, self.tokenizer)
+        datum = SSL_preprocess(datum, self.max_seq_length, self.memory_bank, self.tokenizer)
         return datum
 
 
