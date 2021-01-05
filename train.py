@@ -159,9 +159,9 @@ if __name__=='__main__':
 	# Load the hyperparameters from the config file.
 	args = load_hyperparam(args)
 	args = load_causal_hyperparam(args)
-	vocab = Vocab()
-	vocab.load(args.vocab_path)
-	args.vocab = vocab
+	# vocab = Vocab()
+	# vocab.load(args.vocab_path)
+	# args.vocab = vocab
 	args.stages = [eval(n) for n in args.stages.split(',')]
 	# args.target = 'bert'
 	# train_dataset = bdek_train_dataset(args.source, args.target, args.kg_path, args.supervision_rate)
@@ -191,13 +191,18 @@ if __name__=='__main__':
 			target_reader = reader_factory[dataset_name](domain_name, 'target')
 		else:
 			target_reader = reader_factory[args.target]()
-
+		import time
+		time1 = time.time()
 		if args.task == 'DA_SSL':
 			memory_bank = MemoryBank(args)
+			time2 = time.time()
 			dataset = dataset_factory[args.task](args, source_reader, target_reader, graph_path=args.kg_path, memory_bank=memory_bank)
+			time3 = time.time()
 		else:
 			dataset = dataset_factory[args.task](args, source_reader, target_reader, graph_path=args.kg_path)
 		train_dataset, dev_dataset, eval_dataset = dataset.split()
+		time4 = time.time()
+		print(time2-time1, time3-time2, time4-time3)
 
 		# if '.' in args.dataset:
 		# 	lst = args.dataset.split('.')
