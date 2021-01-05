@@ -25,7 +25,41 @@ from pathlib import Path
 import unidecode
 import pickle
 import pandas as pd
+from nltk.tokenize import word_tokenize
 
+def extract_word_freq(sentences):
+    freq_dict = {}
+    for s in sentences:
+        words = word_tokenize(s)
+        for w in words:
+            if not w in freq_dict:
+                freq_dict[w] = 1
+            else:
+                freq_dict[w] += 1
+    return freq_dict
+
+def sentiment_score_init(source_labeled_text,source_label):
+    word_count = {}
+    word_sentiment_count = {}
+    for sentence, label in zip(source_labeled_text,source_label):
+        for word in word_tokenize(sentence):
+            if word in word_count:
+                word_count[word] += 1
+                if label==1:
+                    word_sentiment_count[word] += 1
+                else:
+                    word_sentiment_count[word] -= 1
+            else:
+                word_count[word] = 1
+                word_sentiment_count[word] = label*2 - 1
+    return word_count, word_sentiment_count
+
+def is_in(pattern, seq):
+    lenp = len(pattern)
+    for i in range(len(seq)):
+        if seq[i:i+lenp] == pattern:
+            return i
+    return len(seq)
 
 def load_pivots(args):
     source = args.source

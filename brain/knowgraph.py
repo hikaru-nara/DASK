@@ -25,8 +25,8 @@ class KnowledgeGraph(object):
     def __init__(self, args, spo_files, use_custom_vocab=False, vocab=None, predicate=True):
         self.predicate = predicate
         self.spo_file_paths = [config.KGS.get(f, f) for f in spo_files]
-        # self.lookup_table = {}
-        self.lookup_table = self._create_lookup_table()
+        self.lookup_table = {}
+        # self.lookup_table = self._create_lookup_table()
         self.segment_vocab = list(self.lookup_table.keys()) + config.NEVER_SPLIT_TAG
         # if use_custom_vocab:
         self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True)
