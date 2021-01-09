@@ -689,6 +689,7 @@ class SSL_kbert_Trainer(object):
 		ssl_loss_meter = AverageMeter()
 		sentim_acc_meter = AverageMeter()
 		time_meter = AverageMeter()
+		ssl_acc_meter = AverageMeter()
 		model.train()
 		
 		# end_time = time.time()
@@ -715,7 +716,12 @@ class SSL_kbert_Trainer(object):
 			mask_org = torch.cat([mask_org1, mask_org2, mask_org3], dim=0)
 			ssl_label = torch.cat([ssl_label1, ssl_label2, ssl_label3], dim=0)
 			# pivot_index = (ssl_label > 0).nonzero().view(-1)
-			
+			# with open('debug1.txt', 'w') as f:
+			# 	tmp = ssl_label.detach().cpu().numpy().tolist()
+			# 	for r in tmp:
+			# 		for c in r:
+			# 			f.write(str(c)+'\t')
+			# 		f.write('\n')
 			# print(tokens_kg1.shape)
 			# print(mask_kg1.shape)
 			# print(tokens_org1.shape)
@@ -740,18 +746,37 @@ class SSL_kbert_Trainer(object):
 				org_input=(tokens_org, mask_org),
 				ssl_label=ssl_label
 			)
+
 			# print(time.time() - start_time, time.time() - end_time)
 			ssl_label = ssl_label.view(-1)
 			ssl_label = ssl_label[ssl_label > 0]
 			# print(pivot_preds.shape)
+
 			# print(ssl_label.shape)
+			# print(tokens_kg1.shape)
+			# print('trainer')
+
+			# print(ssl_label)
+			# print(labeled_batch['text'])
+			# print(src_unlabeled_batch['text'])
+			# print(tgt_unlabeled_batch['text'])
+
+			ssl_label = ssl_label.view(-1)
+			ssl_label = ssl_label[ssl_label > 0]
+			# print(ssl_label)
+
 			loss, sentim_loss, ssl_loss = loss_criterion(logits, labels, pivot_preds, ssl_label)
 
-			sentim_acc = accuracy(logits.detach().cpu().numpy(), labels.detach().cpu().numpy())
+			sentim_acc, pred, conf = accuracy(logits.detach().cpu().numpy(), labels.detach().cpu().numpy(), return_pred_and_conf=True) # labeled
+			ssl_acc = accuracy(pivot_preds.detach().cpu().numpy(),ssl_label.detach().cpu().numpy())
+
+			# unlabeled
 
 			optimizers.step(loss)
 
+
 			end_time = time.time()
+			ssl_acc_meter.update(ssl_acc)
 			time_meter.update(end_time-start_time)
 			loss_meter.update(float(loss))
 			sentim_loss_meter.update(float(sentim_loss))
@@ -764,10 +789,11 @@ class SSL_kbert_Trainer(object):
 					'loss: {loss.val:.3f}({loss.avg:.3f})\t' \
 					'sentiment_loss: {sentim_loss.val:.3f}({sentim_loss.avg:.3f})\t' \
 					'ssl_loss: {ssl_loss.val:.3f}({ssl_loss.avg:.3f})\t' \
-					'sentiment_accuracy: {sentim_acc.val:.3f}({sentim_acc.avg:.3f})'.format(
+					'sentiment_accuracy: {sentim_acc.val:.3f}({sentim_acc.avg:.3f})\t' \
+					'ssl_accuracy: {ssl_acc.val:.3f}({ssl_acc.avg:.3f})'.format(
 						i, batch_time=time_meter, loss=loss_meter,
 						sentim_loss=sentim_loss_meter, ssl_loss=ssl_loss_meter,
-						sentim_acc=sentim_acc_meter)
+						sentim_acc=sentim_acc_meter, ssl_acc=ssl_acc_meter)
 				logger.info(log_string)
 			self.global_steps += 1
 			# end_time = time.time()

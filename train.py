@@ -131,7 +131,8 @@ if __name__=='__main__':
 	parser.add_argument('--num_pivots', type=int, default=500)
 	parser.add_argument('--min_occur', type=int, default=10)
 	parser.add_argument('--update_steps', type=int, default=10)
-
+	parser.add_argument('--update_rate', type=float, default=0.1)
+	parser.add_argument('--confidence_threshold', type=float, default=0.9)
 
 	# graph-causal-DA overall options
 	parser.add_argument('--task', required=True, type=str, help='[domain_adaptation/causal_inference]')
@@ -232,7 +233,7 @@ if __name__=='__main__':
 	collate_fn_eval = collate_factory_eval[args.model_name]
 	train_sampler = torch.utils.data.RandomSampler(train_dataset)
 	train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, num_workers=args.num_workers, \
-											    sampler=train_sampler, collate_fn=collate_fn_train)
+											    sampler=train_sampler, collate_fn=collate_fn_train, drop_last=False)
 	dev_loader = torch.utils.data.DataLoader(dev_dataset, batch_size=args.batch_size, num_workers=args.num_workers, collate_fn=collate_fn_eval)
 	eval_loader = torch.utils.data.DataLoader(eval_dataset, batch_size=args.batch_size, num_workers=args.num_workers, collate_fn=collate_fn_eval)
 	print('model init')

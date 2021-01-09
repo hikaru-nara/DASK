@@ -638,6 +638,7 @@ class SSL_kbert(nn.Module):
 			return pivot_preds
 
 
+
 model_factory = {
 				'graph_causal': None,
 				'graph': graph_domain_adaptation_net,

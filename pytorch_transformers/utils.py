@@ -1061,7 +1061,7 @@ def http_get(url: str, temp_file: BinaryIO, proxies=None, resume_size=0, user_ag
         total=total,
         initial=resume_size,
         desc="Downloading",
-        disable=bool(logging.get_verbosity() == logging.NOTSET),
+        disable=False#bool(logging.get_verbosity() == logging.NOTSET),
     )
     for chunk in r.iter_content(chunk_size=1024):
         if chunk:  # filter out keep-alive new chunks

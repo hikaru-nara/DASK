@@ -266,15 +266,20 @@ def convert_to_unicode(text):
     else:
         raise ValueError("Not running on Python2 or Python 3?")
 
-def accuracy(batch_logits, batch_labels):
+def accuracy(batch_logits, batch_labels, return_pred_and_conf=False):
     '''
     @ Tian Li
     '''
     batch_size = batch_labels.shape[0]
     pred = np.argmax(batch_logits, -1)
+    
     correct = np.sum((pred==batch_labels).astype(np.int))
     acc = correct.astype(np.float)/float(batch_size)
+    if return_pred_and_conf:
+        conf = np.amax(batch_logits, -1)
+        return acc, pred, conf
     return acc
+
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""

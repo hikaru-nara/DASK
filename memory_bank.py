@@ -20,6 +20,8 @@ class MemoryBank(object):
 		self.update_freq = True
 		self.pivots = []
 		self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+		self.alpha = args.update_rate
+		self.conf_threshold = args.confidence_threshold
 		# subword pivot?
 
 	def initialize(self, source_data, target_data):
@@ -106,16 +108,27 @@ class MemoryBank(object):
 				self.pivot2token[p] = self.tokenizer.encode(p, add_special_tokens=False)
 		# assert 'recommendations' in self.pivot2token
 
-	def update(self, sentences, pred_labels):
+	def update(self, sentences, pred_labels, pred_confidence, source_or_target='source'):
 		'''
 		update the memory bank per $self.update_steps
 		考虑是否加新词；如果加的话还要再maintain一个frequency list
 		also update frequent words
-		
+		TODO: high confidence
 		'''
 		if self.curr_steps == 0:
 			# do update
-			pass
+			if source_or_target == 'source':
+				sentiment_score = self.source_dict
+			else:
+				sentiment_score = self.target_dict
+			for sentence, label in zip(sentences, pred_labels):
+				unique = set()
+				for word in word_tokenize(sentence):
+					word = word.lower()
+					if word not in unique:
+						# if label == 1:
+						sentiment_score[word] = (1-self.alpha)*sentiment_score[word] + self.alpha*(2*label-1)
+						unique.add(word)
 		else:
 			self.curr_steps = (self.curr_steps+1)%self.update_steps
 		

@@ -380,6 +380,7 @@ class DA_SSL_train_dataset(torch.utils.data.Dataset):
 
     def __len__(self):
         return self.length 
+        # return 2
 
     def __getitem__(self, index):
         import time
@@ -540,13 +541,15 @@ if __name__ == '__main__':
         requires kg to add knowledge, choose a subset from [ADJ, ADP, ADV, CONJ, DET, NOUN, \
         NUM, PRT, PRON, VERB, ., X], split with "," e.g. ADJ,ADP,ADV', default='ADJ,ADV')
     parser.add_argument('--use_pivot_kg', action='store_true')
-    parser.add_argument('--num_pivots', type=int, default=2000)
-    parser.add_argument('--min_occur', type=int, default=5)
+    parser.add_argument('--num_pivots', type=int, default=500)
+    parser.add_argument('--min_occur', type=int, default=10)
     parser.add_argument('--update_steps', type=int, default=10)
     parser.add_argument('--dataset')
     parser.add_argument('--task')
     parser.add_argument('--source')
     parser.add_argument('--target')
+    parser.add_argument('--update_rate', type=float, default=0.01)
+    parser.add_argument('--confidence_threshold', type=float, default=0.9)
 
     # parser.add_argument('--')
 
@@ -597,7 +600,6 @@ if __name__ == '__main__':
 
         dataset = dataset_factory[args.task](args, data_reader, graph_path=args.kg_path)
         train_dataset, dev_dataset, eval_dataset = dataset.split()
-    exit()
     # vocab = Vocab()
     # vocab.load(args.vocab_path)
     # args.vocab = vocab
@@ -615,8 +617,8 @@ if __name__ == '__main__':
     collate_fn_train = collate_factory_train[args.model]
     # train_sampler = torch.utils.data.RandomSampler(train_dataset)
     # dev_sampler = torch.utils.data.RandomSampler(dev_dataset)
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=8, collate_fn=collate_fn_train)
-    dev_loader = torch.utils.data.DataLoader(dev_dataset, batch_size=8, num_workers=0, collate_fn=collate_fn_eval)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=16, num_workers=8, collate_fn=collate_fn_train)
+    dev_loader = torch.utils.data.DataLoader(dev_dataset, batch_size=16, num_workers=0, collate_fn=collate_fn_eval)
     eval_loader = torch.utils.data.DataLoader(eval_dataset, batch_size=1, num_workers=0, collate_fn=collate_fn_eval)
 
     # tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
@@ -626,7 +628,7 @@ if __name__ == '__main__':
     from transformers import BertTokenizer
     t = BertTokenizer.from_pretrained('bert-base-uncased')
     for i, (labeled_batch,_,_) in enumerate(train_loader):
-        print(labeled_batch.keys())
+        # print(labeled_batch.keys())
         print(labeled_batch['tokens_org'][0])
         # print(labeled_batch['tokens_kg'][0])
         # print(labeled_batch['pos'][0])
@@ -637,6 +639,7 @@ if __name__ == '__main__':
         print(labeled_batch['ssl_label'][0])
         ssl_label = (labeled_batch['ssl_label'][0]!=-1) * labeled_batch['ssl_label'][0]
         print(t.decode(ssl_label))
+        
         # print(t.decode(labeled_batch['tokens_kg'][0]))
         # print(labeled_batch['tokens'][0])
         # print(labeled_batch['pos'][0])

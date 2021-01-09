@@ -56,23 +56,22 @@
     # --vocab_path ./models/multi_cased_L-12_H-768_A-12/vocab.txt \
 
 # SSL DA
-CUDA_VISIBLE_DEVICES='' python3 train.py \
+CUDA_VISIBLE_DEVICES='4,5,6,7' python3 train.py \
     --source bdek.books \
-    --target bdek.dvd \
+    --target bdek.electronics \
     --dataset bdek \
     --model_name SSL_kbert \
-    --task domain_adaptation \
-    --epochs_num 10 --batch_size 2 --kg_path data/imdb_sub_conceptnet.spo \
-    --log_dir log/sentim_1113 \
-    --num_gpus 4 \
+    --task DA_SSL \
+    --epochs_num 10 --batch_size 16 --kg_path data/imdb_sub_conceptnet.spo \
+    --log_dir log/DA_0109 \
     --seq_length 256 \
     --learning_rate 2e-5 \
     --pooling first \
     --num_workers 24 \
     --print_freq 100 \
-    --use_kg
-
-    # --pretrained_model_path ./models/pytorch-bert-uncased/pytorch_model.bin \
+    --pretrained_model_path ./models/pytorch-bert-uncased/pytorch_model.bin \
+    --min_occur 10
     # --config_path ./models/google_config.json \
     # --vocab_path ./models/pytorch-bert-uncased/vocab.txt \
+
 
