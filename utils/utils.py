@@ -30,30 +30,36 @@ from nltk.tokenize import word_tokenize
 def extract_word_freq(sentences):
     freq_dict = {}
     for s in sentences:
+        unique = set()
         words = word_tokenize(s)
         for w in words:
             w = w.lower()
-            if not w in freq_dict:
-                freq_dict[w] = 1
-            else:
-                freq_dict[w] += 1
+            if w not in unique:
+                if not w in freq_dict:
+                    freq_dict[w] = 1
+                else:
+                    freq_dict[w] += 1
+                unique.add(w)
     return freq_dict
 
 def sentiment_score_init(source_labeled_text,source_label):
     word_count = {}
     word_sentiment_count = {}
     for sentence, label in zip(source_labeled_text,source_label):
+        unique = set()
         for word in word_tokenize(sentence):
             word = word.lower()
-            if word in word_count:
-                word_count[word] += 1
-                if label==1:
-                    word_sentiment_count[word] += 1
+            if word not in unique:
+                if word in word_count:
+                    word_count[word] += 1
+                    if label==1:
+                        word_sentiment_count[word] += 1
+                    else:
+                        word_sentiment_count[word] -= 1
                 else:
-                    word_sentiment_count[word] -= 1
-            else:
-                word_count[word] = 1
-                word_sentiment_count[word] = label*2 - 1
+                    word_count[word] = 1
+                    word_sentiment_count[word] = label*2 - 1
+                unique.add(word)
     return word_count, word_sentiment_count
 
 def is_in(pattern, seq):
