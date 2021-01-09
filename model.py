@@ -609,7 +609,7 @@ class SSL_kbert(nn.Module):
 			output = feature[:, 0, :]
 		return output
 
-	def forward(self, kg_input, org_input=None, ssl_label=None):
+	def forward(self, kg_input=None, org_input=None, ssl_label=None):
 		"""
 		Args:
 			tokens_kg: [batch_size x seq_length], sentence with knowledge from graph
@@ -620,21 +620,22 @@ class SSL_kbert(nn.Module):
 			vm: visible_matrix for tokens_kg
 			output_attention: whether or not to output attention mask for each layer and each attention head
 		"""
-		tokens_kg, mask_kg, pos, vm = kg_input
-		output_kg = self.kbert(tokens_kg, mask_kg, position_ids=pos, visible_matrix=vm)[0]
-		logits = self.classifier(self.pooler(output_kg))
-		if org_input is None:
+		if kg_input is not None:
+			tokens_kg, mask_kg, pos, vm = kg_input
+			output_kg = self.kbert(tokens_kg, mask_kg, position_ids=pos, visible_matrix=vm)[0]
+			logits = self.classifier(self.pooler(output_kg))
 			return logits
-		
-		tokens_org, mask_org = org_input
-		output_org = self.kbert(tokens_org, mask_org, position_ids=None, visible_matrix=None)[0]
-		output_org = output_org.view(-1, self.args.hidden_size)
-		# print(output_org.shape)
-		pivot_index = (ssl_label > 0).nonzero().view(-1)
-		# print(pivot_index)
-		output_pivot = torch.index_select(output_org, dim=0, index=pivot_index)
-		pivot_preds = self.decoder(output_pivot)
-		return logits, pivot_preds
+		else:
+			tokens_org, mask_org = org_input
+			assert tokens_org.shape == ssl_label.shape
+			output_org = self.kbert(tokens_org, mask_org, position_ids=None, visible_matrix=None)[0]
+			output_org = output_org.view(-1, self.args.hidden_size)
+			# print(output_org.shape)
+			pivot_index = (ssl_label.view(-1) > 0).nonzero().view(-1)
+			# print(pivot_index)
+			output_pivot = torch.index_select(output_org, dim=0, index=pivot_index)
+			pivot_preds = self.decoder(output_pivot)
+			return pivot_preds
 
 
 model_factory = {

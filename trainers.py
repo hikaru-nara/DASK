@@ -713,7 +713,7 @@ class SSL_kbert_Trainer(object):
 				pos1, vm1 = None, None
 			tokens_org = torch.cat([tokens_org1, tokens_org2, tokens_org3], dim=0)
 			mask_org = torch.cat([mask_org1, mask_org2, mask_org3], dim=0)
-			ssl_label = torch.cat([ssl_label1, ssl_label2, ssl_label3], dim=0).view(-1)
+			ssl_label = torch.cat([ssl_label1, ssl_label2, ssl_label3], dim=0)
 			# pivot_index = (ssl_label > 0).nonzero().view(-1)
 			
 			# print(tokens_kg1.shape)
@@ -730,12 +730,18 @@ class SSL_kbert_Trainer(object):
 
 			start_time = time.time()
 			
-			logits, pivot_preds = model(
+			logits = model(
 				kg_input=(tokens_kg1, mask_kg1, pos1, vm1), 
+				org_input=None,
+				ssl_label=None
+			)
+			pivot_preds = model(
+				kg_input=None, 
 				org_input=(tokens_org, mask_org),
 				ssl_label=ssl_label
 			)
 			# print(time.time() - start_time, time.time() - end_time)
+			ssl_label = ssl_label.view(-1)
 			ssl_label = ssl_label[ssl_label > 0]
 			# print(pivot_preds.shape)
 			# print(ssl_label.shape)
@@ -743,7 +749,7 @@ class SSL_kbert_Trainer(object):
 
 			sentim_acc = accuracy(logits.detach().cpu().numpy(), labels.detach().cpu().numpy())
 
-			# optimizers.step(loss)
+			optimizers.step(loss)
 
 			end_time = time.time()
 			time_meter.update(end_time-start_time)
