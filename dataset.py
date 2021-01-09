@@ -584,6 +584,9 @@ if __name__ == '__main__':
         else:
             dataset = dataset_factory[args.task](args, source_reader, target_reader, graph_path=args.kg_path)
         train_dataset, dev_dataset, eval_dataset = dataset.split()
+        # with open('data/BE_pivots.txt', 'w') as f:
+        #     for p in memory_bank.pivots:
+        #         f.write(p+'\n')
     elif args.task == 'causal_inference' or args.task == 'sentim':
         if '.' in args.dataset:
             lst = args.dataset.split('.')
@@ -594,7 +597,7 @@ if __name__ == '__main__':
 
         dataset = dataset_factory[args.task](args, data_reader, graph_path=args.kg_path)
         train_dataset, dev_dataset, eval_dataset = dataset.split()
-
+    exit()
     # vocab = Vocab()
     # vocab.load(args.vocab_path)
     # args.vocab = vocab

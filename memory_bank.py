@@ -1,6 +1,7 @@
 from utils.utils import extract_word_freq, sentiment_score_init
 from transformers import BertTokenizer
-
+import os
+import pickle as pkl
 class MemoryBank(object):
 	def __init__(self, args):
 		self.args = args
@@ -31,33 +32,54 @@ class MemoryBank(object):
 		source_labeled_text = source_data['labeled']['text']
 		source_label = source_data['labeled']['label']
 		source_unlabeled_text = source_data['unlabeled']['text']
-		source_word_freq = extract_word_freq(source_labeled_text + source_unlabeled_text)
+		source_freq_filename = 'data/amazon-review-old/{}/all_freq.pkl'.format(self.source.split('.')[-1]) # filename needs generalized
+		if os.path.exists(source_freq_filename):
+			with open(source_freq_filename, 'rb') as f:
+				source_word_freq = pkl.load(f)
+		else:
+			source_word_freq = extract_word_freq(source_labeled_text + source_unlabeled_text)
+			with open(source_freq_filename, 'wb') as f:
+				pkl.dump(source_word_freq, f)
 		self.source_freq = source_word_freq.copy()
 
+		target_freq_filename = 'data/amazon-review-old/{}/un_freq.pkl'.format(self.target.split('.')[-1])
 		target_unlabeled_text = target_data['unlabeled']['text']
-		target_word_freq = extract_word_freq(target_unlabeled_text)
+		if os.path.exists(target_freq_filename):
+			with open(target_freq_filename, 'rb') as f:
+				target_word_freq = pkl.load(f)
+		else:
+			target_word_freq = extract_word_freq(target_unlabeled_text)
+			with open(target_freq_filename, 'wb') as f:
+				pkl.dump(target_word_freq, f)
 		self.target_freq = target_word_freq.copy()
 
 		source_high_freq = [word for word, freq in source_word_freq.items() if freq>=self.min_occurrence]
 		target_high_freq = [word for word, freq in target_word_freq.items() if freq>=self.min_occurrence]
-		common_words = [word for word in source_high_freq if word in target_high_freq]
+		# common_words = [word for word in source_high_freq if word in target_high_freq]
+		common_words = list(set(source_high_freq) & set(target_high_freq))
 		self.common_words = common_words
 
 		# step2: calculate sentiment score of those common words in source domain
-		word_count, word_sentiment_count = sentiment_score_init(source_labeled_text,source_label)
-
-		sentiment_score = {}
-		for word in common_words:
-			if word in word_count.keys():
-				sentiment_score[word] = float(word_sentiment_count[word])/float(word_count[word])
-			else:
-				sentiment_score[word] = 0
+		sentiment_score_filename = 'data/amazon-review-old/{}/sentiment.pkl'.format(self.source.split('.')[-1])
+		if os.path.exists(sentiment_score_filename):
+			with open(sentiment_score_filename, 'rb') as f:
+				sentiment_score = pkl.load(f)
+		else:
+			word_count, word_sentiment_count = sentiment_score_init(source_labeled_text,source_label)
+			# print(word_sentiment_count['+'], word_count['+'])
+			# print('commented')
+			sentiment_score = {}
+			for word in common_words:
+				if word in word_count.keys() and word_count[word]>self.min_occurrence:
+					sentiment_score[word] = float(word_sentiment_count[word])/float(word_count[word])
+				else:
+					sentiment_score[word] = 0
+			with open(sentiment_score_filename, 'wb') as f:
+				pkl.dump(sentiment_score, f)
 
 		# step3: save to the source and target dicts respectively
 		self.source_dict = sentiment_score.copy()
 		self.target_dict = {w:s for w,s in sentiment_score.items()  if w in common_words}
-		assert 'parking' in common_words
-		assert 'parking' in self.source_dict.keys()
 		self.get_pivots()
 
 	def get_pivots(self):
@@ -99,3 +121,6 @@ class MemoryBank(object):
 		
 		# final step
 		self.get_pivots()
+
+# if __name__ == '__main__':
+# 	from utils.readers import reader_factory

@@ -584,8 +584,8 @@ class DANN_kbert(nn.Module):
 class SSL_kbert(nn.Module):
 	def __init__(self, args):
 		super(SSL_kbert, self).__init__()
-		model_config = BertConfig.from_pretrained('./models/pytorch-bert-uncased/bert-base-uncased/bert_config.json')
-
+		# model_config = BertConfig.from_pretrained('./models/pytorch-bert-uncased/bert-base-uncased/bert_config.json')
+		model_config = BertConfig.from_pretrained('bert-base-uncased')
 		self.kbert = BertModel(config=model_config, add_pooling_layer=False)
 		self.labels_num = 2
 		self.classifier = torch.nn.Sequential(

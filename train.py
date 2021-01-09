@@ -128,8 +128,8 @@ if __name__=='__main__':
 		requires kg to add knowledge, choose a subset from [ADJ, ADP, ADV, CONJ, DET, NOUN, \
 		NUM, PRT, PRON, VERB, ., X], split with "," e.g. ADJ,ADP,ADV', default='ADJ,ADV,NOUN')
 	parser.add_argument('--use_pivot_kg', action='store_true')
-	parser.add_argument('--num_pivots', type=int, default=2000)
-	parser.add_argument('--min_occur', type=int, default=5)
+	parser.add_argument('--num_pivots', type=int, default=500)
+	parser.add_argument('--min_occur', type=int, default=10)
 	parser.add_argument('--update_steps', type=int, default=10)
 
 

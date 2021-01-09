@@ -692,7 +692,7 @@ class SSL_kbert_Trainer(object):
 		model.train()
 		
 		# end_time = time.time()
-		for i, (labeled_batch, src_unlabeled_batch, tgt_unlabeled_batch) in enumerate(train_loader):
+		for i, (labeled_batch, src_unlabeled_batch, tgt_unlabeled_batch) in enumerate(tqdm(train_loader)):
 			self.optimizers.scheduler_step()
 			# print(optimizers.optimizers['bert'].get_lr()[0])
 			model.zero_grad()
@@ -743,7 +743,7 @@ class SSL_kbert_Trainer(object):
 
 			sentim_acc = accuracy(logits.detach().cpu().numpy(), labels.detach().cpu().numpy())
 
-			optimizers.step(loss)
+			# optimizers.step(loss)
 
 			end_time = time.time()
 			time_meter.update(end_time-start_time)
