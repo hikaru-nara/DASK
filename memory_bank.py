@@ -16,7 +16,7 @@ class MemoryBank(object):
 		self.target_freq = {}
 		self.pivot2token = {}
 		self.common_words = []
-		self.curr_steps = 0
+		self.curr_steps = 1
 		self.update_freq = True
 		self.pivots = []
 		self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')

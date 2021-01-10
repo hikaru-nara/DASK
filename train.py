@@ -134,6 +134,8 @@ if __name__=='__main__':
 	parser.add_argument('--update_rate', type=float, default=0.1)
 	parser.add_argument('--confidence_threshold', type=float, default=0.9)
 	parser.add_argument('--update', action='store_true')
+	parser.add_argument('--lambda_ssl', type=float, default=0.1)
+	parser.add_argument('--ssl_warmup', type=float, default=0)
 
 	# graph-causal-DA overall options
 	parser.add_argument('--task', required=True, type=str, help='[domain_adaptation/causal_inference]')
@@ -300,7 +302,8 @@ if __name__=='__main__':
 	writer = SummaryWriter(log_dir=os.path.join(args.log_dir, 'tensorboard'))
 	logger = create_logger(args.log_dir)
 	logger.info(args)
-
+	total_steps = args.epochs_num * len(train_loader)
+	args.ssl_warmup_steps = int(args.ssl_warmup * total_steps)
 	criterion = loss_factory[args.model_name](args).to(device)
 
 	total_steps = len(train_dataset)
