@@ -727,11 +727,12 @@ class SSL_kbert_Trainer(object):
 			# src labeled data
 			logits = model(kg_input=(tokens_kg1, mask_kg1, pos1, vm1), org_input=None, ssl_label=None)
 
-			# src unlabeled data
-			logits2 = model(kg_input=(tokens_kg2, mask_kg2, pos2, vm2), org_input=None, ssl_label=None)
+			if self.args.update:
+				# src unlabeled data
+				logits2 = model(kg_input=(tokens_kg2, mask_kg2, pos2, vm2), org_input=None, ssl_label=None)
 
-			# tgt unlabeled data
-			logits3 = model(kg_input=(tokens_kg3, mask_kg3, pos3, vm3), org_input=None, ssl_label=None)
+				# tgt unlabeled data
+				logits3 = model(kg_input=(tokens_kg3, mask_kg3, pos3, vm3), org_input=None, ssl_label=None)
 			
 			# ssl
 			pivot_preds = model(kg_input=None, org_input=(tokens_org, mask_org), ssl_label=ssl_label)
@@ -753,9 +754,9 @@ class SSL_kbert_Trainer(object):
 			loss, sentim_loss, ssl_loss = loss_criterion(logits, labels, pivot_preds, ssl_label)
 
 			sentim_acc, pred_labels1, conf1 = accuracy(logits.detach().cpu().numpy(), labels.detach().cpu().numpy(), return_pred_and_conf=True) # labeled
-			_, pred_labels2, conf2 = accuracy(logits2.detach().cpu().numpy(), None, True)
-			_, pred_labels3, conf3 = accuracy(logits3.detach().cpu().numpy(), None, True)
 			if self.args.update:
+				_, pred_labels2, conf2 = accuracy(logits2.detach().cpu().numpy(), None, True)
+				_, pred_labels3, conf3 = accuracy(logits3.detach().cpu().numpy(), None, True)
 				self.memory_bank.update(labeled_batch['text'], pred_labels1, conf1, 'source', step=False)
 				self.memory_bank.update(src_unlabeled_batch['text'], pred_labels2, conf2, 'source', step=False)
 				self.memory_bank.update(tgt_unlabeled_batch['text'], pred_labels3, conf3, 'target', step=True)
