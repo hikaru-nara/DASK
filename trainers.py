@@ -755,9 +755,10 @@ class SSL_kbert_Trainer(object):
 			sentim_acc, pred_labels1, conf1 = accuracy(logits.detach().cpu().numpy(), labels.detach().cpu().numpy(), return_pred_and_conf=True) # labeled
 			_, pred_labels2, conf2 = accuracy(logits2.detach().cpu().numpy(), None, True)
 			_, pred_labels3, conf3 = accuracy(logits3.detach().cpu().numpy(), None, True)
-			self.memory_bank.update(labeled_batch['text'], pred_labels1, conf1, 'source', step=False)
-			self.memory_bank.update(src_unlabeled_batch['text'], pred_labels2, conf2, 'source', step=False)
-			self.memory_bank.update(tgt_unlabeled_batch['text'], pred_labels3, conf3, 'target', step=True)
+			if self.args.update:
+				self.memory_bank.update(labeled_batch['text'], pred_labels1, conf1, 'source', step=False)
+				self.memory_bank.update(src_unlabeled_batch['text'], pred_labels2, conf2, 'source', step=False)
+				self.memory_bank.update(tgt_unlabeled_batch['text'], pred_labels3, conf3, 'target', step=True)
 
 			ssl_acc = accuracy(pivot_preds.detach().cpu().numpy(), ssl_label.detach().cpu().numpy())
 

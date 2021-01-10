@@ -133,6 +133,7 @@ if __name__=='__main__':
 	parser.add_argument('--update_steps', type=int, default=10)
 	parser.add_argument('--update_rate', type=float, default=0.1)
 	parser.add_argument('--confidence_threshold', type=float, default=0.9)
+	parser.add_argument('--update', action='store_true')
 
 	# graph-causal-DA overall options
 	parser.add_argument('--task', required=True, type=str, help='[domain_adaptation/causal_inference]')
