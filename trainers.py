@@ -665,7 +665,7 @@ class DANN_Trainer(object):
 
 
 class SSL_kbert_Trainer(object):
-	def __init__(self, args, train_loader, model, loss_criterion, optimizers, total_steps, logger, writer=None):
+	def __init__(self, args, train_loader, model, loss_criterion, optimizers, total_steps, memory_bank, logger, writer=None):
 		self.args = args
 		self.train_loader = train_loader
 		self.model = model
@@ -674,6 +674,7 @@ class SSL_kbert_Trainer(object):
 		self.total_steps = total_steps
 		self.logger = logger
 		self.global_steps = 0
+		self.memory_bank = memory_bank
 
 	def train_one_epoch(self, device, epoch=0):
 		args = self.args
@@ -694,6 +695,7 @@ class SSL_kbert_Trainer(object):
 		
 		# end_time = time.time()
 		for i, (labeled_batch, src_unlabeled_batch, tgt_unlabeled_batch) in enumerate(tqdm(train_loader)):
+		# for i, (labeled_batch, src_unlabeled_batch) in enumerate(tqdm(train_loader)):		
 			self.optimizers.scheduler_step()
 			# print(optimizers.optimizers['bert'].get_lr()[0])
 			model.zero_grad()
@@ -709,43 +711,30 @@ class SSL_kbert_Trainer(object):
 					(labeled_batch[k].to(device) for k in ['tokens_kg', 'mask_kg', 'tokens_org', 'mask_org', 'ssl_label', 'label'])
 				tokens_kg2, mask_kg2, tokens_org2, mask_org2, ssl_label2 = \
 					(src_unlabeled_batch[k].to(device) for k in ['tokens_kg', 'mask_kg', 'tokens_org', 'mask_org', 'ssl_label'])
+
+				# tokens_kg1, mask_kg1, labels = \
+				# 	(labeled_batch[k].to(device) for k in ['tokens', 'mask', 'label'])
+
 				tokens_kg3, mask_kg3, tokens_org3, mask_org3, ssl_label3 = \
 					(tgt_unlabeled_batch[k].to(device) for k in ['tokens_kg', 'mask_kg', 'tokens_org', 'mask_org', 'ssl_label'])
 				pos1, vm1 = None, None
+
 			tokens_org = torch.cat([tokens_org1, tokens_org2, tokens_org3], dim=0)
 			mask_org = torch.cat([mask_org1, mask_org2, mask_org3], dim=0)
-			ssl_label = torch.cat([ssl_label1, ssl_label2, ssl_label3], dim=0)
-			# pivot_index = (ssl_label > 0).nonzero().view(-1)
-			# with open('debug1.txt', 'w') as f:
-			# 	tmp = ssl_label.detach().cpu().numpy().tolist()
-			# 	for r in tmp:
-			# 		for c in r:
-			# 			f.write(str(c)+'\t')
-			# 		f.write('\n')
-			# print(tokens_kg1.shape)
-			# print(mask_kg1.shape)
-			# print(tokens_org1.shape)
-			# print(mask_org1.shape)
-			# print(tokens_org.shape)
-			# print(mask_org.shape)
-			# print(pivot_index)
-			# print(torch.max(ssl_label))
-			# print(torch.min(ssl_label))
-			# print(torch.max(labels))
-			# print(torch.min(labels))
+			ssl_label = torch.cat([ssl_label1, ssl_label2, ssl_label3], dim=0)	
 
 			start_time = time.time()
+			# src labeled data
+			logits = model(kg_input=(tokens_kg1, mask_kg1, pos1, vm1), org_input=None, ssl_label=None)
+
+			# src unlabeled data
+			logits2 = model(kg_input=(tokens_kg2, mask_kg2, pos2, vm2), org_input=None, ssl_label=None)
+
+			# tgt unlabeled data
+			logits3 = model(kg_input=(tokens_kg3, mask_kg3, pos3, vm3), org_input=None, ssl_label=None)
 			
-			logits = model(
-				kg_input=(tokens_kg1, mask_kg1, pos1, vm1), 
-				org_input=None,
-				ssl_label=None
-			)
-			pivot_preds = model(
-				kg_input=None, 
-				org_input=(tokens_org, mask_org),
-				ssl_label=ssl_label
-			)
+			# ssl
+			pivot_preds = model(kg_input=None, org_input=(tokens_org, mask_org), ssl_label=ssl_label)
 
 			# print(time.time() - start_time, time.time() - end_time)
 			ssl_label = ssl_label.view(-1)
@@ -761,16 +750,16 @@ class SSL_kbert_Trainer(object):
 			# print(src_unlabeled_batch['text'])
 			# print(tgt_unlabeled_batch['text'])
 
-			ssl_label = ssl_label.view(-1)
-			ssl_label = ssl_label[ssl_label > 0]
-			# print(ssl_label)
-
 			loss, sentim_loss, ssl_loss = loss_criterion(logits, labels, pivot_preds, ssl_label)
 
-			sentim_acc, pred, conf = accuracy(logits.detach().cpu().numpy(), labels.detach().cpu().numpy(), return_pred_and_conf=True) # labeled
-			ssl_acc = accuracy(pivot_preds.detach().cpu().numpy(),ssl_label.detach().cpu().numpy())
+			sentim_acc, pred_labels1, conf1 = accuracy(logits.detach().cpu().numpy(), labels.detach().cpu().numpy(), return_pred_and_conf=True) # labeled
+			_, pred_labels2, conf2 = accuracy(logits2.detach().cpu().numpy(), None, True)
+			_, pred_labels3, conf3 = accuracy(logits3.detach().cpu().numpy(), None, True)
+			self.memory_bank.update(labeled_batch['text'], pred_labels1, conf1, 'source', step=False)
+			self.memory_bank.update(src_unlabeled_batch['text'], pred_labels2, conf2, 'source', step=False)
+			self.memory_bank.update(tgt_unlabeled_batch['text'], pred_labels3, conf3, 'target', step=True)
 
-			# unlabeled
+			ssl_acc = accuracy(pivot_preds.detach().cpu().numpy(), ssl_label.detach().cpu().numpy())
 
 			optimizers.step(loss)
 
@@ -794,6 +783,14 @@ class SSL_kbert_Trainer(object):
 						i, batch_time=time_meter, loss=loss_meter,
 						sentim_loss=sentim_loss_meter, ssl_loss=ssl_loss_meter,
 						sentim_acc=sentim_acc_meter, ssl_acc=ssl_acc_meter)
+				# log_string = 'Iteration[{0}]\t' \
+				# 	'time: {batch_time.val:.3f}({batch_time.avg:.3f})\t' \
+				# 	'loss: {loss.val:.3f}({loss.avg:.3f})\t' \
+				# 	'sentiment_loss: {sentim_loss.val:.3f}({sentim_loss.avg:.3f})\t' \
+				# 	'sentiment_accuracy: {sentim_acc.val:.3f}({sentim_acc.avg:.3f})\t'.format(
+				# 		i, batch_time=time_meter, loss=loss_meter,
+				# 		sentim_loss=sentim_loss_meter,
+				# 		sentim_acc=sentim_acc_meter)
 				logger.info(log_string)
 			self.global_steps += 1
 			# end_time = time.time()
@@ -803,10 +800,9 @@ class SSL_kbert_Trainer(object):
 					'time: {batch_time.val:.3f}({batch_time.avg:.3f})\t' \
 					'loss: {loss.val:.3f}({loss.avg:.3f})\t' \
 					'sentiment_loss: {sentim_loss.val:.3f}({sentim_loss.avg:.3f})\t' \
-					'ssl_loss: {ssl_loss.val:.3f}({ssl_loss.avg:.3f})\t' \
 					'sentiment_accuracy: {sentim_acc.val:.3f}({sentim_acc.avg:.3f})'.format(
 						i, batch_time=time_meter, loss=loss_meter,
-						sentim_loss=sentim_loss_meter, ssl_loss=ssl_loss_meter,
+						sentim_loss=sentim_loss_meter,
 						sentim_acc=sentim_acc_meter)
 		logger.info(log_string)
 

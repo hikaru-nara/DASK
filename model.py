@@ -586,7 +586,8 @@ class SSL_kbert(nn.Module):
 		super(SSL_kbert, self).__init__()
 		# model_config = BertConfig.from_pretrained('./models/pytorch-bert-uncased/bert-base-uncased/bert_config.json')
 		model_config = BertConfig.from_pretrained('bert-base-uncased')
-		self.kbert = BertModel(config=model_config, add_pooling_layer=False)
+		self.bert = BertModel(config=model_config, add_pooling_layer=False)
+		# self.kbert = BertModel.from_pretrained('bert-base-uncased', config=model_config)
 		self.labels_num = 2
 		self.classifier = torch.nn.Sequential(
 			nn.Linear(args.hidden_size, args.hidden_size),
@@ -622,13 +623,15 @@ class SSL_kbert(nn.Module):
 		"""
 		if kg_input is not None:
 			tokens_kg, mask_kg, pos, vm = kg_input
-			output_kg = self.kbert(tokens_kg, mask_kg, position_ids=pos, visible_matrix=vm)[0]
+			# output_kg = self.kbert(tokens_kg, mask_kg, position_ids=None, visible_matrix=None)[0]
+			output_kg = self.bert(tokens_kg, mask_kg)[0]
 			logits = self.classifier(self.pooler(output_kg))
 			return logits
 		else:
 			tokens_org, mask_org = org_input
 			assert tokens_org.shape == ssl_label.shape
-			output_org = self.kbert(tokens_org, mask_org, position_ids=None, visible_matrix=None)[0]
+			# output_org = self.kbert(tokens_org, mask_org, position_ids=None, visible_matrix=None)[0]
+			output_org = self.bert(tokens_org, mask_org)[0]
 			output_org = output_org.view(-1, self.args.hidden_size)
 			# print(output_org.shape)
 			pivot_index = (ssl_label.view(-1) > 0).nonzero().view(-1)

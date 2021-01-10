@@ -20,6 +20,7 @@ import torch.optim as optim
 import torch.nn as nn
 import six
 import numpy as np 
+import scipy
 import math
 from pathlib import Path
 import unidecode
@@ -266,17 +267,22 @@ def convert_to_unicode(text):
     else:
         raise ValueError("Not running on Python2 or Python 3?")
 
-def accuracy(batch_logits, batch_labels, return_pred_and_conf=False):
+def accuracy(batch_logits, batch_labels=None, return_pred_and_conf=False):
     '''
     @ Tian Li
     '''
     batch_size = batch_labels.shape[0]
     pred = np.argmax(batch_logits, -1)
-    
-    correct = np.sum((pred==batch_labels).astype(np.int))
-    acc = correct.astype(np.float)/float(batch_size)
+    if batch_labels is not None:
+        correct = np.sum((pred==batch_labels).astype(np.int))
+        acc = correct.astype(np.float)/float(batch_size)
+    else:
+        acc = None
     if return_pred_and_conf:
-        conf = np.amax(batch_logits, -1)
+        if batch_labels is not None:
+            conf = np.ones(batch_size)
+        else:
+            conf = np.amax(scipy.special.softmax(batch_logits, axis=1), -1)
         return acc, pred, conf
     return acc
 

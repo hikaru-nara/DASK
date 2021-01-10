@@ -203,7 +203,7 @@ if __name__=='__main__':
 			dataset = dataset_factory[args.task](args, source_reader, target_reader, graph_path=args.kg_path)
 		train_dataset, dev_dataset, eval_dataset = dataset.split()
 		time4 = time.time()
-		print(time2-time1, time3-time2, time4-time3)
+		# print(time2-time1, time3-time2, time4-time3)
 
 		# if '.' in args.dataset:
 		# 	lst = args.dataset.split('.')
@@ -250,6 +250,7 @@ if __name__=='__main__':
 			load_pretrain_for_two_stage_kbert(model, pretrained_state_dict)
 		# print(model.state_dict.keys())
 		else:
+			# print()
 			state_dict = {}
 			for k,v in pretrained_state_dict.items():
 				spk = k.split('.')
@@ -302,7 +303,10 @@ if __name__=='__main__':
 	criterion = loss_factory[args.model_name](args).to(device)
 
 	total_steps = len(train_dataset)
-	trainer = trainer_factory[args.model_name](args, train_loader, model, criterion, optimizers, total_steps, logger, writer=writer)
+	if args.task == 'DA_SSL':
+		trainer = trainer_factory[args.model_name](args, train_loader, model, criterion, optimizers, total_steps, memory_bank, logger, writer=writer)
+	else:
+		trainer = trainer_factory[args.model_name](args, train_loader, model, criterion, optimizers, total_steps, logger, writer=writer)
 	dev_evaluator = evaluator_factory[args.model_name](args, dev_loader, model, criterion, logger)
 	evaluator = evaluator_factory[args.model_name](args, eval_loader, model, criterion, logger)
 

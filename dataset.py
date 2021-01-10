@@ -139,13 +139,13 @@ def bert_preprocess(datum, max_seq_length, tokenizer):
 
     datum['tokens'] = np.array(tokens)
     datum['mask'] = np.array([1 if t!=0 else 0 for t in datum['tokens']])
-    if 'aug_text' in datum.keys():
-        aug_tokens = tokenizer.encode(datum['aug_text'], max_length=max_seq_length, add_special_tokens=True, truncation=True)
-        # if len(tokens) > max_seq_length:
-        #     tokens = tokens[:max_seq_length - 1] + [tokens[-1]]
+    # if 'aug_text' in datum.keys():
+    #     aug_tokens = tokenizer.encode(datum['aug_text'], max_length=max_seq_length, add_special_tokens=True, truncation=True)
+    #     # if len(tokens) > max_seq_length:
+    #     #     tokens = tokens[:max_seq_length - 1] + [tokens[-1]]
 
-        datum['aug_tokens'] = aug_tokens
-        datum['aug_mask'] = [1 for _ in range(len(datum['aug_tokens']))]
+    #     datum['aug_tokens'] = aug_tokens
+    #     datum['aug_mask'] = [1 for _ in range(len(datum['aug_tokens']))]
     # if len(tokens)<max_seq_length:
     #     padding_len = max_seq_length - len(datum['tokens'])
     #     mask_padding = [0 for _ in range(padding_len)]
@@ -518,8 +518,8 @@ def create_vocab(sentence_list, vocab_size=10000):
 
 dataset_factory = {'causal_inference': Causal_Dataset,
                    'sentim': Causal_Dataset,
-                   'domain_adaptation': DA_Dataset,
-                   'DA_SSL':DA_SSL_dataset}
+                   'domain_adaptation': DA_SSL_dataset,
+                   'DA_SSL': DA_SSL_dataset}
 
 if __name__ == '__main__':
     from utils.readers import reader_factory
@@ -629,16 +629,19 @@ if __name__ == '__main__':
     t = BertTokenizer.from_pretrained('bert-base-uncased')
     for i, (labeled_batch,_,_) in enumerate(train_loader):
         # print(labeled_batch.keys())
-        print(labeled_batch['tokens_org'][0])
+        print(labeled_batch['tokens_kg'][0])
+        print(labeled_batch['mask_kg'][0])
+        # print(labeled_batch['pos'] == torch.arange(256))
+        # print(torch.all(labeled_batch['vm']==1))
         # print(labeled_batch['tokens_kg'][0])
         # print(labeled_batch['pos'][0])
         # print(labeled_batch['vm'][0])
-        print(labeled_batch['text'][0])
-        print(labeled_batch['label'])
-        print(t.decode(labeled_batch['tokens_org'][0]))
-        print(labeled_batch['ssl_label'][0])
-        ssl_label = (labeled_batch['ssl_label'][0]!=-1) * labeled_batch['ssl_label'][0]
-        print(t.decode(ssl_label))
+        # print(labeled_batch['text'][0])
+        # print(labeled_batch['label'])
+        # print(t.decode(labeled_batch['tokens_org'][0]))
+        # print(labeled_batch['ssl_label'][0])
+        # ssl_label = (labeled_batch['ssl_label'][0]!=-1) * labeled_batch['ssl_label'][0]
+        # print(t.decode(ssl_label))
         
         # print(t.decode(labeled_batch['tokens_kg'][0]))
         # print(labeled_batch['tokens'][0])
