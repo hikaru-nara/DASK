@@ -2,6 +2,8 @@ from utils.utils import extract_word_freq, sentiment_score_init
 from transformers import BertTokenizer
 import os
 import pickle as pkl
+from nltk.tokenize import word_tokenize
+
 class MemoryBank(object):
 	def __init__(self, args):
 		self.args = args
@@ -22,6 +24,10 @@ class MemoryBank(object):
 		self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 		self.alpha = args.update_rate
 		self.conf_threshold = args.confidence_threshold
+		self.update_times = {'source':0, 'target':0}
+		self.total_times = {'source':0, 'target':0}
+		self.redo = True
+		self.valid_tags = ['NOUN','ADJ','ADV','VERB']
 		# subword pivot?
 
 	def initialize(self, source_data, target_data):
@@ -35,26 +41,24 @@ class MemoryBank(object):
 		source_label = source_data['labeled']['label']
 		source_unlabeled_text = source_data['unlabeled']['text']
 		source_freq_filename = 'data/amazon-review-old/{}/all_freq.pkl'.format(self.source.split('.')[-1]) # filename needs generalized
-		if os.path.exists(source_freq_filename):
+		if os.path.exists(source_freq_filename) and not self.redo:
 			with open(source_freq_filename, 'rb') as f:
 				source_word_freq = pkl.load(f)
 		else:
-			source_word_freq = extract_word_freq(source_labeled_text + source_unlabeled_text)
+			source_word_freq = extract_word_freq(source_labeled_text + source_unlabeled_text, self.valid_tags)
 			with open(source_freq_filename, 'wb') as f:
 				pkl.dump(source_word_freq, f)
 		self.source_freq = source_word_freq.copy()
-
 		target_freq_filename = 'data/amazon-review-old/{}/un_freq.pkl'.format(self.target.split('.')[-1])
 		target_unlabeled_text = target_data['unlabeled']['text']
-		if os.path.exists(target_freq_filename):
+		if os.path.exists(target_freq_filename) and not self.redo:
 			with open(target_freq_filename, 'rb') as f:
 				target_word_freq = pkl.load(f)
 		else:
-			target_word_freq = extract_word_freq(target_unlabeled_text)
+			target_word_freq = extract_word_freq(target_unlabeled_text, self.valid_tags)
 			with open(target_freq_filename, 'wb') as f:
 				pkl.dump(target_word_freq, f)
 		self.target_freq = target_word_freq.copy()
-
 		source_high_freq = [word for word, freq in source_word_freq.items() if freq>=self.min_occurrence]
 		target_high_freq = [word for word, freq in target_word_freq.items() if freq>=self.min_occurrence]
 		# common_words = [word for word in source_high_freq if word in target_high_freq]
@@ -63,12 +67,12 @@ class MemoryBank(object):
 
 		# step2: calculate sentiment score of those common words in source domain
 		sentiment_score_filename = 'data/amazon-review-old/{}/sentiment.pkl'.format(self.source.split('.')[-1])
-		if os.path.exists(sentiment_score_filename):
+		if os.path.exists(sentiment_score_filename) and not self.redo:
 			with open(sentiment_score_filename, 'rb') as f:
 				sentiment_score = pkl.load(f)
 		else:
-			word_count, word_sentiment_count = sentiment_score_init(source_labeled_text,source_label)
-			# print(word_sentiment_count['+'], word_count['+'])
+			word_count, word_sentiment_count = sentiment_score_init(source_labeled_text,source_label,self.valid_tags)
+			
 			# print('commented')
 			sentiment_score = {}
 			for word in common_words:
@@ -102,6 +106,9 @@ class MemoryBank(object):
 		# step2: return the top $self.num_pivots words
 
 		sorted_word_score = [k for k, v in sorted(score_dict.items(), key=lambda item: -abs(item[1]))]
+		print([score_dict[k] for k in sorted_word_score[200:300]])
+		print([score_dict[k] for k in sorted_word_score[300:400]])
+		print([score_dict[k] for k in sorted_word_score[400:500]])
 		self.pivots = sorted_word_score[:self.num_pivots]
 		for p in self.pivots:
 			if not p in self.pivot2token:
@@ -127,8 +134,12 @@ class MemoryBank(object):
 				unique = set()
 				for word in word_tokenize(sentence):
 					word = word.lower()
+					if word not in self.common_words:
+						continue
 					if word not in unique:
+						self.total_times[source_or_target] += 1
 						if conf>=self.conf_threshold:
+							self.update_times[source_or_target] += 1
 							# if label == 1:
 							sentiment_score[word] = (1-self.alpha)*sentiment_score[word] + self.alpha*(2*label-1)
 						else:

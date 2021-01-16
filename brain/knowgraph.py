@@ -15,18 +15,23 @@ from transformers import BertTokenizer
 import re
 import nltk
 from nltk.tokenize import word_tokenize
-
+from utils.filters import filter_factory
 nltk.download('universal_tagset')
 class KnowledgeGraph(object):
     """
     spo_files - list of Path of *.spo files, or default kg name. e.g., ['HowNet']
     """
 
-    def __init__(self, args, spo_files, use_custom_vocab=False, vocab=None, predicate=True):
+    def __init__(self, args, spo_files, use_custom_vocab=False, vocab=None, predicate=True, memory_bank=None):
         self.predicate = predicate
         self.spo_file_paths = [config.KGS.get(f, f) for f in spo_files]
-        self.lookup_table = {}
-        # self.lookup_table = self._create_lookup_table()
+        # self.lookup_table = {}
+        graphfilter = filter_factory[args.filter](args)
+        if graphfilter is not None:
+            self.spo_file_paths = graphfilter.filter(self.spo_file_paths)
+        else:
+            print('warning!!no filter')
+        self.lookup_table = self._create_lookup_table()
         self.segment_vocab = list(self.lookup_table.keys()) + config.NEVER_SPLIT_TAG
         # if use_custom_vocab:
         self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True)
@@ -34,6 +39,7 @@ class KnowledgeGraph(object):
         #     self.tokenizer = wt.gpt2_tokenizer()
         self.special_tags = set(config.NEVER_SPLIT_TAG)
         self.add_kg_pos = args.pos_require_knowledge.split(',')
+        self.memory_bank = memory_bank
         if args.vocab_require_knowledge is not None:
             self.add_kg_vocab = args.vocab_require_knowledge['word']
         else:
@@ -102,6 +108,7 @@ class KnowledgeGraph(object):
             # print(max_entities)
             # print(token, pos_tag[idx])
             # print(self.add_kg_pos)
+            self.add_kg_vocab = self.memory_bank.pivots
             if self.add_kg_vocab is None:
                 if pos_tag[idx][1] in self.add_kg_pos and token != 'i':
                     # print('add knowledge')
@@ -113,9 +120,13 @@ class KnowledgeGraph(object):
                     entities = list(self.lookup_table.get(token, []))[:max_entities]
                 else:
                     entities = []
+            # print(token, entities)
             token = self.tokenizer.encode(token.strip(), add_special_tokens=False)
+            if len(entities)==0:
+                continue
             if len(token)==0:
                 continue
+
             entities = [' '.join(ent.split('_')) for ent in entities]
             entities = [self.tokenizer.encode(ent.strip(), add_special_tokens=False) for ent in entities]
             # print(token)

@@ -27,15 +27,22 @@ import unidecode
 import pickle
 import pandas as pd
 from nltk.tokenize import word_tokenize
-
-def extract_word_freq(sentences):
+import nltk
+from nltk.corpus import stopwords
+import time
+def extract_word_freq(sentences, valid_tags):
     freq_dict = {}
+    st = stopwords.words('english')
     for s in sentences:
         unique = set()
         words = word_tokenize(s)
+        # pos_tags = nltk.pos_tag(s, tagset='universal')
+
         for w in words:
             w = w.lower()
-            if w not in unique:
+            # if p not in valid_tags:
+            #     continue
+            if w not in unique and w not in st and w.isalpha():
                 if not w in freq_dict:
                     freq_dict[w] = 1
                 else:
@@ -43,14 +50,19 @@ def extract_word_freq(sentences):
                 unique.add(w)
     return freq_dict
 
-def sentiment_score_init(source_labeled_text,source_label):
+def sentiment_score_init(source_labeled_text,source_label,valid_tags):
     word_count = {}
     word_sentiment_count = {}
+    st = stopwords.words('english')
     for sentence, label in zip(source_labeled_text,source_label):
         unique = set()
-        for word in word_tokenize(sentence):
+        words = word_tokenize(sentence)
+        # pos_tags = nltk.pos_tag(sentence, tagset='universal')
+        for word in words:
             word = word.lower()
-            if word not in unique:
+            # if pos not in valid_tags:
+            #     continue
+            if word not in unique and word not in st and word.isalpha():
                 if word in word_count:
                     word_count[word] += 1
                     if label==1:
@@ -271,7 +283,7 @@ def accuracy(batch_logits, batch_labels=None, return_pred_and_conf=False):
     '''
     @ Tian Li
     '''
-    batch_size = batch_labels.shape[0]
+    batch_size = batch_logits.shape[0]
     pred = np.argmax(batch_logits, -1)
     if batch_labels is not None:
         correct = np.sum((pred==batch_labels).astype(np.int))

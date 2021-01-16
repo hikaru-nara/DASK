@@ -136,6 +136,7 @@ if __name__=='__main__':
 	parser.add_argument('--update', action='store_true')
 	parser.add_argument('--lambda_ssl', type=float, default=0.1)
 	parser.add_argument('--ssl_warmup', type=float, default=0)
+	parser.add_argument('--filter', default='default')
 
 	# graph-causal-DA overall options
 	parser.add_argument('--task', required=True, type=str, help='[domain_adaptation/causal_inference]')
@@ -310,7 +311,7 @@ if __name__=='__main__':
 	if args.task == 'DA_SSL':
 		trainer = trainer_factory[args.model_name](args, train_loader, model, criterion, optimizers, total_steps, memory_bank, logger, writer=writer)
 	else:
-		trainer = trainer_factory[args.model_name](args, train_loader, model, criterion, optimizers, total_steps, logger, writer=writer)
+		trainer = trainer_factory[args.model_name](args, train_loader, model, criterion, optimizers, total_steps, logger)
 	dev_evaluator = evaluator_factory[args.model_name](args, dev_loader, model, criterion, logger)
 	evaluator = evaluator_factory[args.model_name](args, eval_loader, model, criterion, logger)
 
@@ -335,11 +336,22 @@ if __name__=='__main__':
 	best_dev_acc = 0
 	best_test_acc = 0
 	for epoch in range(args.epochs_num):
+		if args.task == 'DA_SSL' and args.update:
+			filename = os.path.join(args.log_dir, 'pivot@{}.txt'.format(epoch))
+			with open(filename,'w') as f:
+				for p in memory_bank.pivots:
+					f.write(p+'\n')
 		logger.info('---------------------EPOCH {}---------------------'.format(epoch))
 		global_steps = trainer.train_one_epoch(device,epoch)
 		dev_acc = dev_evaluator.eval_one_epoch(device)
 		test_acc = evaluator.eval_one_epoch(device)
+		if args.task == 'DA_SSL' and args.update:
+			logger.info('source update times: {0}/{1}, target update times: {2}/{3}'.format(
+				memory_bank.update_times['source'],memory_bank.total_times['source'],
+				memory_bank.update_times['target'],memory_bank.total_times['target']))
 		# acc = 1.0
+
+
 		if dev_acc>best_dev_acc:
 			best_dev_acc = dev_acc
 			best_test_acc = test_acc

@@ -159,10 +159,9 @@ def bert_preprocess(datum, max_seq_length, tokenizer):
     return datum
 
 def kbert_preprocess(datum, max_seq_length, kg):
-    
     token_list, position_list, visible_matrix, _ = kg.add_knowledge_with_vm(datum['text'], max_length=max_seq_length, add_special_tokens=True)
     # token_list = [CLS_ID] + token_list[:-2] + [SEP_ID]
-    mask = np.array([1 if t != PAD_TOKEN else 0 for t in token_list])
+    mask = np.array([1 if t != PAD_ID else 0 for t in token_list])
     datum['tokens'] = np.array(token_list)
     datum['pos'] = np.array(position_list)
     datum['vm'] = visible_matrix
@@ -449,7 +448,7 @@ class DA_SSL_dataset(torch.utils.data.Dataset):
 
         memory_bank.initialize(self.source_data, self.target_data)
         if args.use_kg:
-            self.kg = KnowledgeGraph(args, graph_path, predicate=predicate, vocab=None)
+            self.kg = KnowledgeGraph(args, graph_path, predicate=predicate, vocab=None, memory_bank=memory_bank)
         else:
             self.kg = None
 
@@ -518,7 +517,7 @@ def create_vocab(sentence_list, vocab_size=10000):
 
 dataset_factory = {'causal_inference': Causal_Dataset,
                    'sentim': Causal_Dataset,
-                   'domain_adaptation': DA_SSL_dataset,
+                   'domain_adaptation': DA_Dataset,
                    'DA_SSL': DA_SSL_dataset}
 
 if __name__ == '__main__':
@@ -539,7 +538,7 @@ if __name__ == '__main__':
     parser.add_argument('--model', default='base_DA', type=str)
     parser.add_argument('--pos_require_knowledge', type=str, help='the part of speech that \
         requires kg to add knowledge, choose a subset from [ADJ, ADP, ADV, CONJ, DET, NOUN, \
-        NUM, PRT, PRON, VERB, ., X], split with "," e.g. ADJ,ADP,ADV', default='ADJ,ADV')
+        NUM, PRT, PRON, VERB, ., X], split with "," e.g. ADJ,ADP,ADV', default='ADJ,ADV,NOUN')
     parser.add_argument('--use_pivot_kg', action='store_true')
     parser.add_argument('--num_pivots', type=int, default=500)
     parser.add_argument('--min_occur', type=int, default=10)
@@ -550,6 +549,8 @@ if __name__ == '__main__':
     parser.add_argument('--target')
     parser.add_argument('--update_rate', type=float, default=0.01)
     parser.add_argument('--confidence_threshold', type=float, default=0.9)
+    parser.add_argument('--filter',default='default')
+    parser.add_argument('--kg_path')
 
     # parser.add_argument('--')
 
@@ -558,7 +559,7 @@ if __name__ == '__main__':
         args.vocab_require_knowledge = load_pivots(args)
     else:
         args.vocab_require_knowledge = None
-    args.kg_path = ['data/imdb_sub_conceptnet_new.spo']
+    args.kg_path = ['data/results/books_labeled_org']
     args.pollution_rate = [0.7,0.9]
 
     if args.task == 'domain_adaptation' or args.task=='DA_SSL':
@@ -584,12 +585,13 @@ if __name__ == '__main__':
         if args.task == 'DA_SSL':
             memory_bank = MemoryBank(args)
             dataset = dataset_factory[args.task](args, source_reader, target_reader, graph_path=args.kg_path, memory_bank=memory_bank)
+            with open('data/BE_pivots.txt', 'w') as f:
+                for p in memory_bank.pivots:
+                    f.write(p+'\n')
         else:
             dataset = dataset_factory[args.task](args, source_reader, target_reader, graph_path=args.kg_path)
         train_dataset, dev_dataset, eval_dataset = dataset.split()
-        # with open('data/BE_pivots.txt', 'w') as f:
-        #     for p in memory_bank.pivots:
-        #         f.write(p+'\n')
+        
     elif args.task == 'causal_inference' or args.task == 'sentim':
         if '.' in args.dataset:
             lst = args.dataset.split('.')
@@ -617,7 +619,7 @@ if __name__ == '__main__':
     collate_fn_train = collate_factory_train[args.model]
     # train_sampler = torch.utils.data.RandomSampler(train_dataset)
     # dev_sampler = torch.utils.data.RandomSampler(dev_dataset)
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=16, num_workers=8, collate_fn=collate_fn_train)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=2, num_workers=0, collate_fn=collate_fn_train)
     dev_loader = torch.utils.data.DataLoader(dev_dataset, batch_size=16, num_workers=0, collate_fn=collate_fn_eval)
     eval_loader = torch.utils.data.DataLoader(eval_dataset, batch_size=1, num_workers=0, collate_fn=collate_fn_eval)
 
@@ -627,21 +629,22 @@ if __name__ == '__main__':
     # nltk.download('punkt')
     from transformers import BertTokenizer
     t = BertTokenizer.from_pretrained('bert-base-uncased')
-    for i, (labeled_batch,_,_) in enumerate(train_loader):
+    for i, (labeled_batch,_) in enumerate(train_loader):
         # print(labeled_batch.keys())
-        print(labeled_batch['tokens_kg'][0])
-        print(labeled_batch['mask_kg'][0])
-        # print(labeled_batch['pos'] == torch.arange(256))
-        # print(torch.all(labeled_batch['vm']==1))
-        # print(labeled_batch['tokens_kg'][0])
-        # print(labeled_batch['pos'][0])
-        # print(labeled_batch['vm'][0])
-        # print(labeled_batch['text'][0])
-        # print(labeled_batch['label'])
-        # print(t.decode(labeled_batch['tokens_org'][0]))
-        # print(labeled_batch['ssl_label'][0])
-        # ssl_label = (labeled_batch['ssl_label'][0]!=-1) * labeled_batch['ssl_label'][0]
-        # print(t.decode(ssl_label))
+        print(labeled_batch['tokens_org'][0])
+        print(labeled_batch['mask_org'][0])
+        print(labeled_batch['pos'][0])
+        # # print(torch.all(labeled_batch['vm']==1))
+        # # print(labeled_batch['tokens_kg'][0])
+        # # print(labeled_batch['pos'][0])
+        print(labeled_batch['vm'][0])
+        # # print(labeled_batch['text'][0])
+        # # print(labeled_batch['label'])
+        print(t.decode(labeled_batch['tokens_org'][0]))
+        print(labeled_batch['text'][0])
+        # # print(labeled_batch['ssl_label'][0])
+        # # ssl_label = (labeled_batch['ssl_label'][0]!=-1) * labeled_batch['ssl_label'][0]
+        # # print(t.decode(ssl_label))
         
         # print(t.decode(labeled_batch['tokens_kg'][0]))
         # print(labeled_batch['tokens'][0])
@@ -666,5 +669,5 @@ if __name__ == '__main__':
         # assert unlabeled_batch['text'][0]!=unlabeled_batch['aug_text'][0]
         # print(labeled_batch['mask'])
         # print(labeled_batch['label'][0])
-        if i==1:
+        if i==10:
             break

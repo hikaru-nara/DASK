@@ -718,6 +718,9 @@ class SSL_kbert_Trainer(object):
 				tokens_kg3, mask_kg3, tokens_org3, mask_org3, ssl_label3 = \
 					(tgt_unlabeled_batch[k].to(device) for k in ['tokens_kg', 'mask_kg', 'tokens_org', 'mask_org', 'ssl_label'])
 				pos1, vm1 = None, None
+				pos2, vm2 = None, None
+				pos3, vm3 = None, None
+
 
 			tokens_org = torch.cat([tokens_org1, tokens_org2, tokens_org3], dim=0)
 			mask_org = torch.cat([mask_org1, mask_org2, mask_org3], dim=0)
