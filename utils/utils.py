@@ -156,6 +156,28 @@ def save_attention_mask(attentions, text, pos, tokens, log_dir):
             pickle.dump(text_, f)
         print('==>attentions and so forth are saved to {}'.format(log_dir))
 
+def save_fail_cases(logits, labels, attentions, text, pos, tokens, log_dir):
+    preds = np.argmax(logits,-1)
+    for i, (pred, label) in enumerate(zip(preds, labels)):
+        # pred = np.argmax(logit, -1)
+        print('pred: ',pred, 'label: ', label, 'id: ', i)
+        if pred!=label:
+            
+            attentions_ = [a[i,:,:,:] for a in attentions]
+            text_ = text[i]
+            pos_ = pos[i,...]
+            tokens_ = tokens[i,...]
+            with open(os.path.join(log_dir,'fail_attentions{}.pkl'.format(i)), 'wb') as f:
+                pickle.dump(attentions_, f)
+            with open(os.path.join(log_dir, 'fail_pos{}.pkl'.format(i)), 'wb') as f:
+                pickle.dump(pos_, f)
+            with open(os.path.join(log_dir, 'fail_tokens{}.pkl'.format(i)), 'wb') as f:
+                pickle.dump(tokens_, f)
+            with open(os.path.join(log_dir, 'fail_text{}.pkl'.format(i)), 'wb') as f:
+                pickle.dump(text_, f)
+            print('==>failcase attentions and so forth are saved to {}'.format(log_dir))
+            return True
+
 
 
 def standardize(word):

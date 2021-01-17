@@ -595,7 +595,13 @@ class SSL_kbert(nn.Module):
 			nn.ReLU(),
 			nn.Linear(args.hidden_size, self.labels_num)
 		)
-		self.decoder = nn.Linear(args.hidden_size, model_config.vocab_size)
+		# self.decoder = nn.Linear(args.hidden_size, model_config.vocab_size)
+		self.decoder = torch.nn.Sequential(
+			nn.Linear(args.hidden_size, args.hidden_size),
+			nn.Dropout(args.dropout),
+			nn.ReLU(),
+			nn.Linear(args.hidden_size, model_config.vocab_size)
+		)
 		self.pooling = args.pooling
 		self.args = args
 
@@ -641,6 +647,80 @@ class SSL_kbert(nn.Module):
 			return pivot_preds
 
 
+class SSL_kbert_DANN(nn.Module):
+	def __init__(self, args):
+		super(SSL_kbert_DANN, self).__init__()
+		# model_config = BertConfig.from_pretrained('./models/pytorch-bert-uncased/bert-base-uncased/bert_config.json')
+		model_config = BertConfig.from_pretrained('bert-base-uncased')
+		self.bert = BertModel(config=model_config, add_pooling_layer=False)
+		# self.kbert = BertModel.from_pretrained('bert-base-uncased', config=model_config)
+		self.labels_num = 2
+		self.classifier = torch.nn.Sequential(
+			nn.Linear(args.hidden_size, args.hidden_size),
+			nn.Dropout(args.dropout),
+			nn.ReLU(),
+			nn.Linear(args.hidden_size, self.labels_num)
+		)
+		self.dc = torch.nn.Sequential(
+			nn.Linear(args.hidden_size, args.hidden_size),
+			nn.Dropout(args.dropout),
+			nn.ReLU(),
+			nn.Linear(args.hidden_size, 2)
+		)
+		self.decoder = nn.Linear(args.hidden_size, model_config.vocab_size)
+		self.pooling = args.pooling
+		self.args = args
+
+	def pooler(self, feature):
+		if self.pooling == "mean":
+			output = torch.mean(feature, dim=1)
+		elif self.pooling == "max":
+			output = torch.max(feature, dim=1)[0]
+		elif self.pooling == "last":
+			output = feature[:, -1, :]
+		else:
+			output = feature[:, 0, :]
+		return output
+
+	def domain_classifier(self, input, constant):
+		input = GradReverse.grad_reverse(input, constant)
+		return self.dc(input)
+
+	def forward(self, kg_input=None, constant=None, org_input=None, ssl_label=None):
+		"""
+		Args:
+			tokens_kg: [batch_size x seq_length], sentence with knowledge from graph
+			tokens_org: [batch_size x seq_length], sentence without extra knowledge, but contain more part of orginal sentence
+			mask_kg: padding mask for tokens_kg
+			mask_org: padding mask for tokens_org
+			pos: position_id for tokens_kg
+			vm: visible_matrix for tokens_kg
+			output_attention: whether or not to output attention mask for each layer and each attention head
+		"""
+		if kg_input is not None:
+			tokens_kg, mask_kg, pos, vm = kg_input
+			# output_kg = self.kbert(tokens_kg, mask_kg, position_ids=None, visible_matrix=None)[0]
+			output_kg = self.bert(tokens_kg, mask_kg)[0]
+			logits = self.classifier(self.pooler(output_kg))
+			if constant is not None:
+				domain_preds = self.domain_classifier(self.pooler(output_kg), constant)
+				return logits, domain_preds
+			else:
+				return logits
+		else:
+			tokens_org, mask_org = org_input
+			assert tokens_org.shape == ssl_label.shape
+			# output_org = self.kbert(tokens_org, mask_org, position_ids=None, visible_matrix=None)[0]
+			output_org = self.bert(tokens_org, mask_org)[0]
+			output_org = output_org.view(-1, self.args.hidden_size)
+			# print(output_org.shape)
+			pivot_index = (ssl_label.view(-1) > 0).nonzero().view(-1)
+			# print(pivot_index)
+			output_pivot = torch.index_select(output_org, dim=0, index=pivot_index)
+			pivot_preds = self.decoder(output_pivot)
+			return pivot_preds
+
+
 
 model_factory = {
 				'graph_causal': None,
@@ -651,6 +731,7 @@ model_factory = {
 				'sentim': BertClassifier,
 				'base_DA': BertClassifier,
 				'DANN_kbert': DANN_kbert,
-				'SSL_kbert': SSL_kbert
+				'SSL_kbert': SSL_kbert,
+				'SSL_kbert_DANN': SSL_kbert_DANN
 				}
 

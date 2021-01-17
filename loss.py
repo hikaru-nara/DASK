@@ -129,6 +129,41 @@ class SSL_kbert_loss(torch.nn.Module):
         return loss, class_loss, ssl_loss
 
 
+class SSL_kbert_DANN_loss(torch.nn.Module):
+    def __init__(self, args):
+        super(SSL_kbert_DANN_loss, self).__init__()
+        self.cross_entropy = cross_entropy_loss()
+        self.lambda_ssl = args.lambda_ssl
+        if args.ssl_warmup_steps!=0:
+            self.cur_lambda_ssl = 0
+            self.ssl_warmup_steps = args.ssl_warmup_steps
+            self.k = self.lambda_ssl / self.ssl_warmup_steps
+        else:
+            self.cur_lambda_ssl = self.lambda_ssl
+
+    def forward(self, class_preds, labels, pivot_preds=None, pivot_labels=None, all_dom_preds=None, all_dom_labels=None):
+        # print(labels)
+        # print(pivot_labels)
+        class_loss = self.cross_entropy(class_preds, labels)
+        if pivot_labels is not None:
+            ssl_loss = self.cur_lambda_ssl * self.cross_entropy(pivot_preds, pivot_labels)
+            if self.cur_lambda_ssl<self.lambda_ssl:
+                self.cur_lambda_ssl += self.k
+        else:
+            ssl_loss = torch.tensor(0.)
+        if all_dom_labels is not None:
+            dom_loss = self.cross_entropy(all_dom_preds, all_dom_labels)
+        else:
+            dom_loss = torch.tensor(0.)
+        loss = class_loss + ssl_loss + dom_loss
+        if all_dom_labels is not None:
+            return loss, class_loss, ssl_loss, dom_loss
+        else:
+            return loss, class_loss, ssl_loss
+
+
+
+
 loss_factory = {
     'causal': causal_inference_loss,
     'sentim': sentim_loss,
@@ -136,5 +171,6 @@ loss_factory = {
     'kbert_two_stage_sentim': sentim_loss,
     'kbert_two_stage_da': sentim_loss,
     'DANN_kbert': DANN_loss,
-    'SSL_kbert': SSL_kbert_loss
+    'SSL_kbert': SSL_kbert_loss,
+    'SSL_kbert_DANN': SSL_kbert_DANN_loss
 }

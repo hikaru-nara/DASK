@@ -46,37 +46,84 @@ class KnowledgeGraph(object):
             self.add_kg_vocab = None
         for pos in self.add_kg_pos:
             assert pos in config.POS_SET
+        print('max entities', config.MAX_ENTITIES)
 
     def _create_lookup_table(self):
+        # lookup_table = {}
+        # for spo_path in self.spo_file_paths:
+        #     print("[KnowledgeGraph] Loading spo from {}".format(spo_path))
+        #     with open(spo_path, 'r', encoding='utf-8') as f:
+        #         for line in f:
+        #             # print('line')
+        #             # print(line)
+        #             # print(line.split('\t'))
+        #             try:
+        #                 lst = line.split('\t')
+
+        #                 subj, pred, obje = lst[0], lst[1], lst[2][:-1]
+        #                 # subj = subj[:subj.rfind('/')]
+        #                 # subj = subj[subj.rfind('/')+1:]
+        #                 # pred = pred[pred.rfind('/')+1:]
+        #                 # obje = obje[pred.rfind('/')+1:]
+        #             except:
+        #                 print("[KnowledgeGraph] Bad spo:", line)
+        #             if self.predicate:
+
+        #                 pred = '_'.join(re.findall('[A-Z][^A-Z]*', pred)) # RelatedTo -> Related_To
+        #                 value = pred + '_' + obje
+        #             else:
+        #                 value = obje
+        #             if subj in lookup_table.keys():
+        #                 lookup_table[subj].add(value)
+        #             else:
+        #                 lookup_table[subj] = set([value])
+        # return lookup_table
         lookup_table = {}
         for spo_path in self.spo_file_paths:
             print("[KnowledgeGraph] Loading spo from {}".format(spo_path))
             with open(spo_path, 'r', encoding='utf-8') as f:
                 for line in f:
-                    # print('line')
-                    # print(line)
-                    # print(line.split('\t'))
                     try:
                         lst = line.split('\t')
 
                         subj, pred, obje = lst[0], lst[1], lst[2][:-1]
-                        # subj = subj[:subj.rfind('/')]
-                        # subj = subj[subj.rfind('/')+1:]
-                        # pred = pred[pred.rfind('/')+1:]
-                        # obje = obje[pred.rfind('/')+1:]
                     except:
                         print("[KnowledgeGraph] Bad spo:", line)
-                    if self.predicate:
-
-                        pred = '_'.join(re.findall('[A-Z][^A-Z]*', pred)) # RelatedTo -> Related_To
-                        value = pred + '_' + obje
-                    else:
-                        value = obje
+                    # print(pred)
+                    # pred = '_'.join(re.findall('[A-Z][^A-Z]*', pred)) # RelatedTo -> Related_To
+                    # print(pred)
+                    value = pred + '_' + obje                    
                     if subj in lookup_table.keys():
                         lookup_table[subj].add(value)
                     else:
                         lookup_table[subj] = set([value])
+
+                    value = subj + '_' + pred
+                    if obje in lookup_table.keys():
+                        lookup_table[obje].add(value)
+                    else:
+                        lookup_table[obje] = set([value])
+
+                    value = subj + '_' + obje
+                    if pred in lookup_table.keys():
+                        lookup_table[pred].add(value)
+                    else:
+                        lookup_table[pred]=set([value])
+                    # if self.predicate:
+
+                    #     pred = '_'.join(re.findall('[A-Z][^A-Z]*', pred)) # RelatedTo -> Related_To
+                    #     value = pred + '_' + obje
+                    # else:
+                    #     value = obje
+                    # if subj in lookup_table.keys():
+                    #     lookup_table[subj].add(value)
+                    # else:
+                    #     lookup_table[subj] = set([value])
         return lookup_table
+
+    # def add_knowledge_with_vm_new(self, sentence, max_entities=config.MAX_ENTITIES, add_pad=True, max_length=256, add_special_tokens=True):
+        
+
 
     def add_knowledge_with_vm(self, sentence, max_entities=config.MAX_ENTITIES, add_pad=True, max_length=256, add_special_tokens=True):
         '''
@@ -116,17 +163,19 @@ class KnowledgeGraph(object):
                 else:
                     entities = []
             else:
+                # print(token)
+                # print(token in self.add_kg_vocab)
                 if token in self.add_kg_vocab:
+                    
                     entities = list(self.lookup_table.get(token, []))[:max_entities]
+
                 else:
                     entities = []
+                # print(len(entities))
             # print(token, entities)
             token = self.tokenizer.encode(token.strip(), add_special_tokens=False)
-            if len(entities)==0:
-                continue
             if len(token)==0:
                 continue
-
             entities = [' '.join(ent.split('_')) for ent in entities]
             entities = [self.tokenizer.encode(ent.strip(), add_special_tokens=False) for ent in entities]
             # print(token)
@@ -208,7 +257,7 @@ class KnowledgeGraph(object):
             pad_num = max_length - src_length
             know_sent += [PAD_ID] * pad_num
             seg += [0] * pad_num
-            pos += [max_length - 1] * pad_num
+            pos += list(range(src_length, max_length))
             visible_matrix = np.pad(visible_matrix, ((0, pad_num), (0, pad_num)), 'constant')  # pad 0
         else:
             know_sent = know_sent[:max_length]

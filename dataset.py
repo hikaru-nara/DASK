@@ -284,20 +284,20 @@ class DA_train_dataset(torch.utils.data.Dataset):
         # self.augmenter = augmenter
 
     def __len__(self):
-        return max(self.len_labeled, self.len_unlabeled)
-        # return self.len_labeled
+        # return max(self.len_labeled, self.len_unlabeled)
+        return self.len_labeled
 
     def __getitem__(self, i):
-        assert self.len_labeled<self.len_unlabeled
-        l_ind = i*self.len_labeled//self.len_unlabeled
-        # l_ind = i
+        # assert self.len_labeled<self.len_unlabeled
+        # l_ind = i*self.len_labeled//self.len_unlabeled
+        l_ind = i
 
         labeled_datum = {k: self.labeled_data[k][l_ind] for k in self.labeled_data.keys()}
+
         if self.kg is None:
             labeled_datum = bert_preprocess(labeled_datum, self.max_seq_length, self.tokenizer)
         else:
             labeled_datum = kbert_preprocess(labeled_datum, self.max_seq_length, self.kg)
-
         unlabeled_datum = {k: self.unlabeled_data[k][i] for k in self.unlabeled_data.keys()}
         if self.kg is None:
             unlabeled_datum = bert_preprocess(unlabeled_datum, self.max_seq_length, self.tokenizer)
@@ -333,15 +333,18 @@ class DA_Dataset(torch.utils.data.Dataset):
     @ Tian Li
     '''
 
-    def __init__(self, args, source_reader, target_reader, graph_path=None, predicate=True, use_custom_vocab=None):
+    def __init__(self, args, source_reader, target_reader, graph_path=None, predicate=True, memory_bank=None, use_custom_vocab=None):
         super(DA_Dataset, self).__init__()
         self.source_data = source_reader.read_data()  # return a dict {'labeled':data, 'unlabeled':data}
         self.target_data = target_reader.read_data()
         self.max_seq_length = args.seq_length
+        self.memory_bank = memory_bank
+        if self.memory_bank is not None:
+            self.memory_bank.initialize(self.source_data, self.target_data)
         # self.augmenter = augment_factory[args.augmenter](args)
         self.vocab = None
         if args.use_kg:
-            self.kg = KnowledgeGraph(args, graph_path, predicate=predicate, vocab=self.vocab)
+            self.kg = KnowledgeGraph(args, graph_path, predicate=predicate, memory_bank=memory_bank, vocab=self.vocab)
         else:
             self.kg = None
 
@@ -559,7 +562,9 @@ if __name__ == '__main__':
         args.vocab_require_knowledge = load_pivots(args)
     else:
         args.vocab_require_knowledge = None
-    args.kg_path = ['data/results/books_labeled_org']
+    args.kg_path = args.kg_path.split(',\n\t')
+    # args.kg_path = ['data/results/books_labeled_org']
+
     args.pollution_rate = [0.7,0.9]
 
     if args.task == 'domain_adaptation' or args.task=='DA_SSL':
@@ -582,14 +587,14 @@ if __name__ == '__main__':
         else:
             target_reader = reader_factory[args.target]()
 
-        if args.task == 'DA_SSL':
-            memory_bank = MemoryBank(args)
-            dataset = dataset_factory[args.task](args, source_reader, target_reader, graph_path=args.kg_path, memory_bank=memory_bank)
-            with open('data/BE_pivots.txt', 'w') as f:
-                for p in memory_bank.pivots:
-                    f.write(p+'\n')
-        else:
-            dataset = dataset_factory[args.task](args, source_reader, target_reader, graph_path=args.kg_path)
+        # if args.task == 'DA_SSL':
+        memory_bank = MemoryBank(args)
+        dataset = dataset_factory[args.task](args, source_reader, target_reader, graph_path=args.kg_path, memory_bank=memory_bank)
+        with open('data/BE_pivots.txt', 'w') as f:
+            for p in memory_bank.pivots:
+                f.write(p+'\n')
+        # else:
+        #     dataset = dataset_factory[args.task](args, source_reader, target_reader, graph_path=args.kg_path)
         train_dataset, dev_dataset, eval_dataset = dataset.split()
         
     elif args.task == 'causal_inference' or args.task == 'sentim':
@@ -631,16 +636,17 @@ if __name__ == '__main__':
     t = BertTokenizer.from_pretrained('bert-base-uncased')
     for i, (labeled_batch,_) in enumerate(train_loader):
         # print(labeled_batch.keys())
-        print(labeled_batch['tokens_org'][0])
-        print(labeled_batch['mask_org'][0])
+        print(i)
+        print(labeled_batch['tokens'][0])
+        # print(labeled_batch['mask'][0])
         print(labeled_batch['pos'][0])
         # # print(torch.all(labeled_batch['vm']==1))
         # # print(labeled_batch['tokens_kg'][0])
         # # print(labeled_batch['pos'][0])
-        print(labeled_batch['vm'][0])
+        print(labeled_batch['vm'][0][-16:,-16:])
         # # print(labeled_batch['text'][0])
         # # print(labeled_batch['label'])
-        print(t.decode(labeled_batch['tokens_org'][0]))
+        print(t.decode(labeled_batch['tokens'][0]))
         print(labeled_batch['text'][0])
         # # print(labeled_batch['ssl_label'][0])
         # # ssl_label = (labeled_batch['ssl_label'][0]!=-1) * labeled_batch['ssl_label'][0]
@@ -660,7 +666,7 @@ if __name__ == '__main__':
         # print(labeled_batch['aug_tokens'][0])
         # print(labeled_batch['label'][0])
         # assert labeled_batch['text'][0]!=labeled_batch['aug_text'][0]
-        print(i)
+        
         # print(unlabeled_src_batch['text'][0])
         # print(unlabeled_src_batch['aug_text'][0])
         # print(unlabeled_src_batch['domain'][0])
@@ -669,5 +675,5 @@ if __name__ == '__main__':
         # assert unlabeled_batch['text'][0]!=unlabeled_batch['aug_text'][0]
         # print(labeled_batch['mask'])
         # print(labeled_batch['label'][0])
-        if i==10:
+        if i==0:
             break

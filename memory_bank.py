@@ -106,9 +106,6 @@ class MemoryBank(object):
 		# step2: return the top $self.num_pivots words
 
 		sorted_word_score = [k for k, v in sorted(score_dict.items(), key=lambda item: -abs(item[1]))]
-		print([score_dict[k] for k in sorted_word_score[200:300]])
-		print([score_dict[k] for k in sorted_word_score[300:400]])
-		print([score_dict[k] for k in sorted_word_score[400:500]])
 		self.pivots = sorted_word_score[:self.num_pivots]
 		for p in self.pivots:
 			if not p in self.pivot2token:

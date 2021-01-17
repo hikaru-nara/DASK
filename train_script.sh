@@ -56,22 +56,78 @@
     # --vocab_path ./models/multi_cased_L-12_H-768_A-12/vocab.txt \
 
 # SSL DA
-CUDA_VISIBLE_DEVICES='4,5,6,7' python3 train.py \
+# CUDA_VISIBLE_DEVICES='0,1,6' python3 train.py \
+#     --source bdek.books \
+#     --target bdek.electronics \
+#     --model_name SSL_kbert \
+#     --task DA_SSL \
+#     --epochs_num 10 --batch_size 24 \
+#     --kg_path data/results/electronics_unlabeled_org \
+#     --log_dir log/DA_Pbert_0109 \
+#     --seq_length 256 \
+#     --learning_rate 2e-5 \
+#     --pooling first \
+#     --num_workers 32 \
+#     --print_freq 100 \
+#     --pretrained_model_path ./models/pytorch-bert-uncased/pytorch_model.bin \
+#     --min_occur 10 \
+#     --num_pivots 500
+    # --config_path ./models/google_config.json \
+    # --vocab_path ./models/pytorch-bert-uncased/vocab.txt \
+#Pbert
+# CUDA_VISIBLE_DEVICES='0,1,2' python3 train.py \
+#     --source bdek.books \
+#     --target bdek.electronics \
+#     --model_name base_DA \
+#     --task domain_adaptation \
+#     --epochs_num 10 --batch_size 48 \
+#     --kg_path data/results/electronics_unlabeled_org \
+#     --log_dir log/DA_Pbert_0117 \
+#     --seq_length 256 \
+#     --learning_rate 2e-5 \
+#     --pooling first \
+#     --num_workers 24 \
+#     --print_freq 100 \
+#     --pretrained_model_path ./models/pytorch-bert-uncased/pytorch_model.bin \
+#     --min_occur 10 \
+#     --use_kg 
+#Pbert eval
+# CUDA_VISIBLE_DEVICES='0,1,2' python3 evaluate.py \
+#     --source bdek.books \
+#     --target bdek.electronics \
+#     --model_name base_DA \
+#     --task domain_adaptation \
+#     --epochs_num 10 --batch_size 48 \
+#     --kg_path data/results/electronics_unlabeled_org \
+#     --log_dir log/DA_Pbert_0117 \
+#     --seq_length 256 \
+#     --learning_rate 2e-5 \
+#     --pooling first \
+#     --num_workers 24 \
+#     --print_freq 100 \
+#     --trained_model_path ./log/DA_Pbert_0116/model_best.pth \
+#     --min_occur 10 \
+#     --use_kg \
+#     --save_attention_mask
+
+# SSL+DANN
+CUDA_VISIBLE_DEVICES='2,3,4,5' python3 train.py \
     --source bdek.books \
     --target bdek.electronics \
-    --dataset bdek \
-    --model_name SSL_kbert \
+    --model_name SSL_kbert_DANN \
     --task DA_SSL \
-    --epochs_num 10 --batch_size 16 --kg_path data/imdb_sub_conceptnet.spo \
-    --log_dir log/DA_0109 \
+    --epochs_num 10 --batch_size 32 \
+    --kg_path data/results/electronics_unlabeled_org \
+    --log_dir log/DA_Pbert_DANN_0117 \
     --seq_length 256 \
     --learning_rate 2e-5 \
     --pooling first \
-    --num_workers 24 \
+    --num_workers 32 \
     --print_freq 100 \
     --pretrained_model_path ./models/pytorch-bert-uncased/pytorch_model.bin \
-    --min_occur 10
-    # --config_path ./models/google_config.json \
-    # --vocab_path ./models/pytorch-bert-uncased/vocab.txt \
-
+    --min_occur 10 \
+    --config_path ./models/google_config.json \
+    --vocab_path ./models/pytorch-bert-uncased/vocab.txt \
+    --use_kg \
+    --gamma 0.5
 

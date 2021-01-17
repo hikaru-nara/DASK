@@ -1,7 +1,7 @@
 import torch 
 from utils.utils import accuracy
 from utils.utils import AverageMeter
-from utils.utils import save_attention_mask
+from utils.utils import save_attention_mask, save_fail_cases
 from tqdm import tqdm
 import time
 from transformers import BertTokenizer
@@ -189,13 +189,17 @@ class sentim_Evaluator(object):
                 if self.args.save_attention_mask and i==0:
                     sentim_probs, attentions = model(tokens, masks, pos=positions, vm=vms, output_attention=True, only_first_vm=self.args.only_first_vm)
                     attentions = [a.detach().cpu().numpy() for a in attentions]
-                    save_attention_mask(attentions, batch_data['text'], batch_data['pos'], batch_data['tokens'], self.args.log_dir)
+                    # save_attention_mask(attentions, batch_data['text'], batch_data['pos'], batch_data['tokens'], self.args.log_dir)
 
                 else:
                     sentim_probs = model(tokens, masks, pos=positions, vm=vms, output_attention=False, only_first_vm=self.args.only_first_vm)
                 sentim_loss = loss_criterion(sentim_probs, labels)
 
                 sentim_acc = accuracy(sentim_probs.detach().cpu().numpy(), labels.detach().cpu().numpy())
+                if self.args.save_fail_cases:
+                    if save_fail_cases(sentim_probs.detach().cpu().numpy(), labels.detach().cpu().numpy(), 
+                        attentions, batch_data['text'], batch_data['pos'], batch_data['tokens'], self.args.log_dir):
+                        break
 
                 sentim_acc_meter.update(sentim_acc, n=batch_size)
                 sentim_loss_meter.update(sentim_loss, n=batch_size)
@@ -432,5 +436,6 @@ evaluator_factory = {
         'kbert_two_stage_sentim': kbert_two_stage_Evaluator,
         'kbert_two_stage_da': kbert_two_stage_Evaluator,
         'DANN_kbert': DANN_Evaluator,
-        'SSL_kbert': SSL_kbert_Evaluator
+        'SSL_kbert': SSL_kbert_Evaluator,
+        'SSL_kbert_DANN': SSL_kbert_Evaluator
         }

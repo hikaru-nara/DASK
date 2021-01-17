@@ -16,7 +16,7 @@ from uer.utils.config import load_hyperparam
 from uer.utils.seed import set_seed
 from uer.model_saver import save_model
 from utils.utils import get_optimizer
-from dataset import dataset_factory, collate_fn_eval
+from dataset import dataset_factory
 from trainers import trainer_factory
 from utils.readers import reader_factory
 from model import model_factory
@@ -26,7 +26,7 @@ from loss import loss_factory
 from utils.utils import create_logger, consistence, load_pivots
 from utils.config import load_causal_hyperparam
 from collate_fn import collate_factory_eval
-
+from memory_bank import MemoryBank
 
 if __name__=='__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -65,6 +65,7 @@ if __name__=='__main__':
     parser.add_argument('--fuser', type=str, default='cross-attention', help='fuser method')
     parser.add_argument("--stages", type=str, default='6,6', help="stages for two_stage_kbert")
     parser.add_argument('--skip_double_embedding', action='store_true', help='whether to skip embedding at stage 2')
+    parser.add_argument('--only_first-vm')
 
     # Subword options.
     parser.add_argument("--subword_type", choices=["none", "char"], default="none",
@@ -113,6 +114,7 @@ if __name__=='__main__':
     # Evaluation options.
     parser.add_argument("--mean_reciprocal_rank", action="store_true", help="Evaluation metrics for DBQA dataset.")
     parser.add_argument('--save_attention_mask', action="store_true", help="save attention mask of all heads from all layers on the first minibatch")
+    parser.add_argument('--save_fail_cases', action="store_true")
 
     # kg
     parser.add_argument("--kg_path", default='', help="KG path")
@@ -121,6 +123,16 @@ if __name__=='__main__':
     parser.add_argument('--pos_require_knowledge', type=str, help='the part of speech that \
         requires kg to add knowledge, choose a subset from [ADJ, ADP, ADV, CONJ, DET, NOUN, \
         NUM, PRT, PRON, VERB, ., X], split with "," e.g. ADJ,ADP,ADV', default='ADJ,ADV,NOUN')
+    parser.add_argument('--use_pivot_kg', action='store_true')
+    parser.add_argument('--num_pivots', type=int, default=500)
+    parser.add_argument('--min_occur', type=int, default=10)
+    parser.add_argument('--update_steps', type=int, default=10)
+    parser.add_argument('--update_rate', type=float, default=0.1)
+    parser.add_argument('--confidence_threshold', type=float, default=0.9)
+    parser.add_argument('--update', action='store_true')
+    parser.add_argument('--lambda_ssl', type=float, default=0.1)
+    parser.add_argument('--ssl_warmup', type=float, default=0)
+    parser.add_argument('--filter', default='default')
 
     # graph-causal-DA overall options
     parser.add_argument('--task', required=True, type=str, help='[domain_adaptation/causal_inference]')
@@ -134,9 +146,9 @@ if __name__=='__main__':
                         bdek.books')
     parser.add_argument('--target', type=str, help='if use bdek dataset, specify with bdek.domain, e.g.\
                         bdek.books')
-    parser.add_argument('--use_pivot_kg', action='store_true')
-    parser.add_argument('--num_pivots', type=int, default=2000)
-    parser.add_argument('--min_occur', type=int, default=5)
+    # parser.add_argument('--use_pivot_kg', action='store_true')
+    # parser.add_argument('--num_pivots', type=int, default=2000)
+    # parser.add_argument('--min_occur', type=int, default=5)
     
     # causal 
     parser.add_argument('--pollution_rate', default=[0.9, 0.7], help='pollution rate in datareader')
@@ -182,8 +194,8 @@ if __name__=='__main__':
             target_reader = reader_factory[dataset_name](domain_name, 'target')
         else:
             target_reader = reader_factory[args.target]()
-
-        dataset = dataset_factory[args.task](args, source_reader, target_reader, graph_path=args.kg_path)
+        memory_bank = MemoryBank(args)
+        dataset = dataset_factory[args.task](args, source_reader, target_reader, graph_path=args.kg_path, memory_bank=memory_bank)
         train_dataset, dev_dataset, eval_dataset = dataset.split()
     elif args.task == 'causal_inference' or args.task == 'sentim':
 
@@ -282,8 +294,8 @@ if __name__=='__main__':
     best_acc = 0
     for epoch in range(args.epochs_num):
         logger.info('---------------------EPOCH {}---------------------'.format(epoch))
-        dev_acc = dev_evaluator.eval_one_epoch(device)
-        print(dev_acc)
+        # dev_acc = dev_evaluator.eval_one_epoch(device)
+        # print(dev_acc)
         acc = evaluator.eval_one_epoch(device)
         # acc = 1.0
         # if acc>best_acc:
