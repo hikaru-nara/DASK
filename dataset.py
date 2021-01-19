@@ -281,16 +281,18 @@ class DA_train_dataset(torch.utils.data.Dataset):
         self.max_seq_length = max_seq_length
         self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
         self.kg = kg
+        print('dataset 284')
+        print(self.len_labeled,self.len_unlabeled)
         # self.augmenter = augmenter
 
     def __len__(self):
-        # return max(self.len_labeled, self.len_unlabeled)
+        return max(self.len_labeled, self.len_unlabeled)
         return self.len_labeled
 
     def __getitem__(self, i):
-        # assert self.len_labeled<self.len_unlabeled
-        # l_ind = i*self.len_labeled//self.len_unlabeled
-        l_ind = i
+        assert self.len_labeled<self.len_unlabeled
+        l_ind = i*self.len_labeled//self.len_unlabeled
+        # l_ind = i
 
         labeled_datum = {k: self.labeled_data[k][l_ind] for k in self.labeled_data.keys()}
 
@@ -356,7 +358,7 @@ class DA_Dataset(torch.utils.data.Dataset):
 
         len_dev = len(labeled_src['text'])
         inds = list(range(len_dev))
-        # random.shuffle(inds)
+        random.shuffle(inds)
         labeled_src = {k:[labeled_src[k][i] for i in inds] for k in labeled_src.keys()}
         dev_data = {k:labeled_src[k][len_dev//5*4:] for k in labeled_src.keys()}
         train_labeled = {k:labeled_src[k][:len_dev//5*4] for k in labeled_src.keys()}
@@ -553,7 +555,7 @@ if __name__ == '__main__':
     parser.add_argument('--update_rate', type=float, default=0.01)
     parser.add_argument('--confidence_threshold', type=float, default=0.9)
     parser.add_argument('--filter',default='default')
-    parser.add_argument('--kg_path')
+    parser.add_argument('--kg_path', default='')
 
     # parser.add_argument('--')
 
@@ -590,7 +592,10 @@ if __name__ == '__main__':
         # if args.task == 'DA_SSL':
         memory_bank = MemoryBank(args)
         dataset = dataset_factory[args.task](args, source_reader, target_reader, graph_path=args.kg_path, memory_bank=memory_bank)
-        with open('data/BE_pivots.txt', 'w') as f:
+        lst1 = source.split('.')
+        lst2 = target.split('.')
+        filename = '{}{}_pivots.txt'.format(lst1[1][0],lst2[1][0])
+        with open(os.path.join('data',filename), 'w') as f:
             for p in memory_bank.pivots:
                 f.write(p+'\n')
         # else:
@@ -610,7 +615,7 @@ if __name__ == '__main__':
     # vocab = Vocab()
     # vocab.load(args.vocab_path)
     # args.vocab = vocab
-
+    exit()
     # source_reader = reader_factory['bdek']('books','source')
     # target_reader = reader_factory['bdek']('kitchen','target')
 

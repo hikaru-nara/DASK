@@ -553,7 +553,11 @@ class base_DA_Trainer(object):
 
 			sentim_acc = accuracy(sentim_probs.detach().cpu().numpy(), labels.detach().cpu().numpy())
 
-			optimizers.step(sentim_loss)
+			if i % self.args.balanced_interval == 0:
+				optimizers.step(sentim_loss)
+			else:
+				# optimizers.step(sentim_loss)
+				pass
 
 			end_time = time.time()
 			time_meter.update(end_time-start_time)
@@ -766,8 +770,11 @@ class SSL_kbert_Trainer(object):
 
 			ssl_acc = accuracy(pivot_preds.detach().cpu().numpy(), ssl_label.detach().cpu().numpy())
 
-			optimizers.step(loss)
-
+			if i % self.args.balanced_interval == 0:
+				# print(i)
+				optimizers.step(loss)
+			else:
+				optimizers.step(ssl_loss)
 
 			end_time = time.time()
 			ssl_acc_meter.update(ssl_acc)

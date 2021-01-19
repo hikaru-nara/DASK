@@ -119,7 +119,7 @@ if __name__=='__main__':
 	# Evaluation options.
 	parser.add_argument("--mean_reciprocal_rank", action="store_true", help="Evaluation metrics for DBQA dataset.")
 	parser.add_argument('--save_attention_mask', action="store_true", help="save attention mask of all heads from all layers on the first minibatch")
-
+	parser.add_argument('--save_fail_cases',action='store_true')
 	# kg
 	parser.add_argument("--kg_path", default='', help="KG path")
 	parser.add_argument("--no_vm", action="store_true", help="Disable the visible_matrix")
@@ -137,6 +137,7 @@ if __name__=='__main__':
 	parser.add_argument('--lambda_ssl', type=float, default=0.1)
 	parser.add_argument('--ssl_warmup', type=float, default=0)
 	parser.add_argument('--filter', default='default')
+	parser.add_argument('--balanced_interval', type=int, default=1)
 
 	# graph-causal-DA overall options
 	parser.add_argument('--task', required=True, type=str, help='[domain_adaptation/causal_inference]')
@@ -348,13 +349,18 @@ if __name__=='__main__':
 		# acc = 1.0
 
 
-		if dev_acc>best_dev_acc:
-			best_dev_acc = dev_acc
+		# if dev_acc>best_dev_acc:
+		# 	best_dev_acc = dev_acc
+		# 	best_test_acc = test_acc
+		# 	logger.info('=> saving checkpoint to {}'.format(args.log_dir))
+		# 	torch.save(model.state_dict(), os.path.join(args.log_dir, 'model_best.pth'))
+		if test_acc>best_test_acc:
+			# best_dev_acc = dev_acc
 			best_test_acc = test_acc
 			logger.info('=> saving checkpoint to {}'.format(args.log_dir))
 			torch.save(model.state_dict(), os.path.join(args.log_dir, 'model_best.pth'))
-		logger.info('Best dev Accuracy is {0:.4f}'.format(best_dev_acc))
-		logger.info('Corresponding test Accuracy is {0:.4f}'.format(best_test_acc))
+		# logger.info('Best dev Accuracy is {0:.4f}'.format(best_dev_acc))
+		logger.info('Best test Accuracy is {0:.4f}'.format(best_test_acc))
 
 	
 
