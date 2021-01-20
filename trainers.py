@@ -806,6 +806,7 @@ class SSL_kbert_Trainer(object):
 				logger.info(log_string)
 			self.global_steps += 1
 			# end_time = time.time()
+			del loss, sentim_loss
 
 		logger.info('-----Training epoch summary------')
 		log_string = 'Iteration[{0}]\t' \
