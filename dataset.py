@@ -286,13 +286,13 @@ class DA_train_dataset(torch.utils.data.Dataset):
         # self.augmenter = augmenter
 
     def __len__(self):
-        return max(self.len_labeled, self.len_unlabeled)
+        # return max(self.len_labeled, self.len_unlabeled)
         return self.len_labeled
 
     def __getitem__(self, i):
         assert self.len_labeled<self.len_unlabeled
-        l_ind = i*self.len_labeled//self.len_unlabeled
-        # l_ind = i
+        # l_ind = i*self.len_labeled//self.len_unlabeled
+        l_ind = i
 
         labeled_datum = {k: self.labeled_data[k][l_ind] for k in self.labeled_data.keys()}
 
