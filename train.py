@@ -148,6 +148,7 @@ if __name__=='__main__':
 	parser.add_argument('--sparsity_lambda', type=float, default=1)
 	parser.add_argument('--continuity_lambda', type=float, default=5)
 	parser.add_argument('--diff_lambda', type=float, default=10, help='lambda balance term in loss')
+	parser.add_argument('--filter_conf', type=float, default=0.1, help='confidence threshold')
 
 	# DA
 	parser.add_argument('--source', type=str, help='if use bdek dataset, specify with bdek.domain, e.g.\
@@ -178,7 +179,7 @@ if __name__=='__main__':
 		args.vocab_require_knowledge = load_pivots(args)
 	else:
 		args.vocab_require_knowledge = None
-	if args.task == 'domain_adaptation' or args.task == 'DA_SSL':
+	if args.task == 'domain_adaptation' or args.task == 'DA_SSL' or args.task == 'masked_DA_SSL':
 		source = args.source
 		if '.' in source:
 			# print('source')
@@ -234,7 +235,7 @@ if __name__=='__main__':
 	collate_fn_eval = collate_factory_eval[args.model_name]
 	train_sampler = torch.utils.data.RandomSampler(train_dataset)
 	train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, num_workers=args.num_workers, \
-											    sampler=train_sampler, collate_fn=collate_fn_train, drop_last=False)
+											    sampler=train_sampler, collate_fn=collate_fn_train, drop_last=True)
 	dev_loader = torch.utils.data.DataLoader(dev_dataset, batch_size=args.batch_size, num_workers=args.num_workers, collate_fn=collate_fn_eval)
 	eval_loader = torch.utils.data.DataLoader(eval_dataset, batch_size=args.batch_size, num_workers=args.num_workers, collate_fn=collate_fn_eval)
 	print('model init')
@@ -305,7 +306,7 @@ if __name__=='__main__':
 	criterion = loss_factory[args.model_name](args).to(device)
 
 	total_steps = len(train_dataset)
-	if args.task == 'DA_SSL':
+	if args.task == 'DA_SSL' or args.task == 'masked_DA_SSL':
 		trainer = trainer_factory[args.model_name](args, train_loader, model, criterion, optimizers, total_steps, memory_bank, logger, writer=writer)
 	else:
 		trainer = trainer_factory[args.model_name](args, train_loader, model, criterion, optimizers, total_steps, logger)

@@ -961,6 +961,129 @@ class SSL_kbert_DANN_Trainer(object):
 		return self.global_steps
 
 
+class masked_SSL_kbert_Trainer(object):
+	def __init__(self, args, train_loader, model, loss_criterion, optimizers, total_steps, memory_bank, logger, writer=None):
+		self.args = args
+		self.train_loader = train_loader
+		self.model = model
+		self.loss_criterion = loss_criterion
+		self.optimizers = optimizers
+		self.total_steps = total_steps
+		self.logger = logger
+		self.global_steps = 0
+		self.memory_bank = memory_bank
+
+	def train_one_epoch(self, device, epoch=0):
+		args = self.args
+		train_loader = self.train_loader
+		model = self.model
+		loss_criterion = self.loss_criterion
+		optimizers = self.optimizers
+		total_steps = self.total_steps
+		logger = self.logger
+
+		loss_meter = AverageMeter()
+		sentim_loss_meter = AverageMeter()
+		ssl_loss_meter = AverageMeter()
+		sentim_acc_meter = AverageMeter()
+		time_meter = AverageMeter()
+		ssl_acc_meter = AverageMeter()
+		model.train()
+		
+		# end_time = time.time()
+		for i, (labeled_batch, src_unlabeled_batch, tgt_unlabeled_batch) in enumerate(tqdm(train_loader)):
+		# for i, (labeled_batch, src_unlabeled_batch) in enumerate(tqdm(train_loader)):		
+			self.optimizers.scheduler_step()
+			# print(optimizers.optimizers['bert'].get_lr()[0])
+			model.zero_grad()
+			if self.args.use_kg:
+				tokens1, mask1, pos1, vm1, tokens_mask1, vm_ssl1, ssl_label1, labels = \
+					(labeled_batch[k].to(device) for k in ['tokens', 'mask', 'pos', 'vm', 'tokens_mask', 'vm_ssl', 'ssl_label', 'label'])
+				tokens2, mask2, pos2, vm2, tokens_mask2, vm_ssl2, ssl_label2 = \
+					(src_unlabeled_batch[k].to(device) for k in ['tokens', 'mask', 'pos', 'vm', 'tokens_mask', 'vm_ssl', 'ssl_label'])
+				tokens3, mask3, pos3, vm3, tokens_mask3, vm_ssl3, ssl_label3 = \
+					(tgt_unlabeled_batch[k].to(device) for k in ['tokens', 'mask', 'pos', 'vm', 'tokens_mask', 'vm_ssl', 'ssl_label'])
+			else:
+				exit()
+
+			tokens_all = torch.cat([tokens_mask1, tokens_mask2, tokens_mask3], dim=0)
+			mask_all = torch.cat([mask1, mask2, mask3], dim=0)
+			pos_all = torch.cat([pos1, pos2, pos3], dim=0)
+			vm_ssl_all = torch.cat([vm_ssl1, vm_ssl2, vm_ssl3], dim=0)
+			ssl_label = torch.cat([ssl_label1, ssl_label2, ssl_label3], dim=0)	
+
+			start_time = time.time()
+			# src labeled data
+			logits = model(kg_input=(tokens1, mask1, pos1, vm1), ssl_label=None)
+
+			if self.args.update:
+				# src unlabeled data
+				logits2 = model(kg_input=(tokens2, mask2, pos2, vm2), ssl_label=None)
+
+				# tgt unlabeled data
+				logits3 = model(kg_input=(tokens3, mask3, pos3, vm3), ssl_label=None)
+			
+			# ssl
+			pivot_preds = model(kg_input=(tokens_all, mask_all, pos_all, vm_ssl_all), ssl_label=ssl_label)
+
+			# print(time.time() - start_time, time.time() - end_time)
+			ssl_label = ssl_label.view(-1)
+			ssl_label = ssl_label[ssl_label > 0]
+
+			loss, sentim_loss, ssl_loss = loss_criterion(logits, labels, pivot_preds, ssl_label)
+
+			sentim_acc, pred_labels1, conf1 = accuracy(logits.detach().cpu().numpy(), labels.detach().cpu().numpy(), return_pred_and_conf=True) # labeled
+			if self.args.update:
+				_, pred_labels2, conf2 = accuracy(logits2.detach().cpu().numpy(), None, True)
+				_, pred_labels3, conf3 = accuracy(logits3.detach().cpu().numpy(), None, True)
+				self.memory_bank.update(labeled_batch['text'], pred_labels1, conf1, 'source', step=False)
+				self.memory_bank.update(src_unlabeled_batch['text'], pred_labels2, conf2, 'source', step=False)
+				self.memory_bank.update(tgt_unlabeled_batch['text'], pred_labels3, conf3, 'target', step=True)
+
+			ssl_acc = accuracy(pivot_preds.detach().cpu().numpy(), ssl_label.detach().cpu().numpy())
+
+			if i % self.args.balanced_interval == 0:
+				optimizers.step(loss)
+			else:
+				optimizers.step(ssl_loss)
+
+			end_time = time.time()
+			ssl_acc_meter.update(ssl_acc)
+			time_meter.update(end_time-start_time)
+			loss_meter.update(float(loss))
+			sentim_loss_meter.update(float(sentim_loss))
+			ssl_loss_meter.update(float(ssl_loss))
+			sentim_acc_meter.update(float(sentim_acc))
+
+			if i % self.args.print_freq==0:
+				log_string = 'Iteration[{0}]\t' \
+					'time: {batch_time.val:.3f}({batch_time.avg:.3f})\t' \
+					'loss: {loss.val:.3f}({loss.avg:.3f})\t' \
+					'sentiment_loss: {sentim_loss.val:.3f}({sentim_loss.avg:.3f})\t' \
+					'ssl_loss: {ssl_loss.val:.3f}({ssl_loss.avg:.3f})\t' \
+					'sentiment_accuracy: {sentim_acc.val:.3f}({sentim_acc.avg:.3f})\t' \
+					'ssl_accuracy: {ssl_acc.val:.3f}({ssl_acc.avg:.3f})'.format(
+						i, batch_time=time_meter, loss=loss_meter,
+						sentim_loss=sentim_loss_meter, ssl_loss=ssl_loss_meter,
+						sentim_acc=sentim_acc_meter, ssl_acc=ssl_acc_meter)
+				logger.info(log_string)
+			self.global_steps += 1
+			# end_time = time.time()
+			del loss, sentim_loss
+
+		logger.info('-----Training epoch summary------')
+		log_string = 'Iteration[{0}]\t' \
+					'time: {batch_time.val:.3f}({batch_time.avg:.3f})\t' \
+					'loss: {loss.val:.3f}({loss.avg:.3f})\t' \
+					'sentiment_loss: {sentim_loss.val:.3f}({sentim_loss.avg:.3f})\t' \
+					'sentiment_accuracy: {sentim_acc.val:.3f}({sentim_acc.avg:.3f})'.format(
+						i, batch_time=time_meter, loss=loss_meter,
+						sentim_loss=sentim_loss_meter,
+						sentim_acc=sentim_acc_meter)
+		logger.info(log_string)
+
+		return self.global_steps
+
 
 trainer_factory = {'graph_causal': graph_causal_Trainer,
 				'graph': None,
@@ -971,5 +1094,6 @@ trainer_factory = {'graph_causal': graph_causal_Trainer,
 				'kbert_two_stage_sentim': kbert_two_stage_sentim_Trainer,
 				'DANN_kbert': DANN_Trainer,
 				'SSL_kbert': SSL_kbert_Trainer,
-				'SSL_kbert_DANN': SSL_kbert_DANN_Trainer
+				'SSL_kbert_DANN': SSL_kbert_DANN_Trainer,
+				'masked_SSL_kbert': masked_SSL_kbert_Trainer
 				}

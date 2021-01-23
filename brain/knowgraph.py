@@ -125,7 +125,8 @@ class KnowledgeGraph(object):
         
 
 
-    def add_knowledge_with_vm(self, sentence, max_entities=config.MAX_ENTITIES, add_pad=True, max_length=256, add_special_tokens=True):
+    def add_knowledge_with_vm(self, sentence, max_entities=config.MAX_ENTITIES, add_pad=True, max_length=256, add_special_tokens=True,
+            return_ssl_mask=False):
         '''
         need to tune max_length on bdek dataset; draw the histgram of length and decide a threshold
         '''
@@ -215,18 +216,22 @@ class KnowledgeGraph(object):
         know_sent = []
         pos = []
         seg = []
+        # ssl_mask_pos = []
         for i in range(len(sent_tree)):
             word = sent_tree[i][0]
             if not isinstance(word, list) and word in self.special_tags:
                 know_sent += [word]
                 seg += [0] # 1？？
+                # ssl_mask_pos += [1]
             else:
                 # add_word = word.strip().split(' ')
                 # add_word = self.tokenizer.encode(word.strip())
                 add_word = list(word)
                 know_sent += add_word 
                 seg += [0] * len(add_word) # 1？？
+                # ssl_mask_pos += [1] * len(add_word)
             pos += pos_idx_tree[i][0]
+            
             for j in range(len(sent_tree[i][1])):
                 add_word = sent_tree[i][1][j]
                 # add_word = add_word.strip().split(' ')
@@ -234,6 +239,7 @@ class KnowledgeGraph(object):
                 know_sent += add_word
                 seg += [1] * len(add_word)
                 pos += list(pos_idx_tree[i][1][j])
+                # ssl_mask_pos += [0] * len(add_word)
 
         
 
@@ -241,15 +247,21 @@ class KnowledgeGraph(object):
 
         # Calculate visible matrix
         visible_matrix = np.zeros((token_num, token_num))
+        ssl_mask = np.zeros((token_num, token_num))
         for item in abs_idx_tree:
             src_ids = item[0]
             for id in src_ids:
                 visible_abs_idx = abs_idx_src + [idx for ent in item[1] for idx in ent]
                 visible_matrix[id, visible_abs_idx] = 1
+                ssl_mask[id, abs_idx_src] = 1
             for ent in item[1]:
                 for id in ent:
                     visible_abs_idx = ent + src_ids
                     visible_matrix[id, visible_abs_idx] = 1
+
+        # calculate ssl_mask
+        # ssl_mask = np.zeros((token_num, token_num))
+        # for item in 
 
         src_length = len(know_sent)
 
@@ -259,11 +271,13 @@ class KnowledgeGraph(object):
             seg += [0] * pad_num
             pos += list(range(src_length, max_length))
             visible_matrix = np.pad(visible_matrix, ((0, pad_num), (0, pad_num)), 'constant')  # pad 0
+            ssl_mask = np.pad(ssl_mask, ((0, pad_num), (0, pad_num)), 'constant')
         else:
             know_sent = know_sent[:max_length]
             seg = seg[:max_length]
             pos = pos[:max_length]
             visible_matrix = visible_matrix[:max_length, :max_length]
+            ssl_mask = ssl_mask[:max_length, :max_length]
         
         # if len(know_sent) < max_length - 2:
         #     pad_num = max_length - src_length
@@ -287,8 +301,10 @@ class KnowledgeGraph(object):
         #     visible_matrix = np.pad(visible_matrix, ((1,1),(1,1)), 'constant')
         #     visible_matrix[0,0] = 1 
         #     visible_matrix[-1,-1] = 1
-        
-        return know_sent, pos, visible_matrix, seg
+        if return_ssl_mask:
+            return know_sent, pos, visible_matrix, ssl_mask, abs_idx_src
+        else:    
+            return know_sent, pos, visible_matrix, seg
 
 
     def add_knowledge_with_vm_batch(self, sent_batch, max_entities=config.MAX_ENTITIES, add_pad=True, max_length=256):

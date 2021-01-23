@@ -158,14 +158,22 @@ def bert_preprocess(datum, max_seq_length, tokenizer):
     # datum['tokens'], datum['mask'], datum['domain'] = torch.tensor(datum['tokens']), torch.tensor(datum['mask']), torch.tensor['domain']
     return datum
 
-def kbert_preprocess(datum, max_seq_length, kg):
-    token_list, position_list, visible_matrix, _ = kg.add_knowledge_with_vm(datum['text'], max_length=max_seq_length, add_special_tokens=True)
+def kbert_preprocess(datum, max_seq_length, kg, return_ssl_mask=False):
+    if return_ssl_mask:
+        token_list, position_list, visible_matrix, ssl_vm, abs_src_pos = kg.add_knowledge_with_vm(datum['text'], \
+            max_length=max_seq_length, add_special_tokens=True, return_ssl_mask=return_ssl_mask)
+    else:
+        token_list, position_list, visible_matrix, _ = kg.add_knowledge_with_vm(datum['text'], \
+            max_length=max_seq_length, add_special_tokens=True, return_ssl_mask=return_ssl_mask)
     # token_list = [CLS_ID] + token_list[:-2] + [SEP_ID]
     mask = np.array([1 if t != PAD_ID else 0 for t in token_list])
     datum['tokens'] = np.array(token_list)
     datum['pos'] = np.array(position_list)
     datum['vm'] = visible_matrix
     datum['mask'] = mask
+    if return_ssl_mask:
+        datum['vm_ssl'] = ssl_vm
+        datum['src_pos'] = abs_src_pos
     return datum
 
 def SSL_preprocess(datum, max_seq_length, memory_bank, tokenizer):
@@ -183,6 +191,26 @@ def SSL_preprocess(datum, max_seq_length, memory_bank, tokenizer):
             tokens[i] = tokenizer.encode('[MASK]')[1] # [101, 103, 102]
     datum['tokens_org'] = tokens
     datum['ssl_label'] = ssl_label
+    return datum
+
+def Masked_SSL_preprocess(datum, max_seq_length, memory_bank, tokenizer):
+    # tokens = tokenizer.encode(datum['text'], add_special_tokens=True, max_length=max_seq_length, truncation=True)
+    
+    tokens = datum['tokens'].tolist()
+    
+    ssl_label = [-1] * len(tokens)
+    for w,t in memory_bank.pivot2token.items():
+        start_pos = is_in(t, tokens)
+        if start_pos != len(tokens) and start_pos in datum['src_pos']:
+            ssl_label[start_pos: start_pos+len(t)] = t
+
+    assert len(tokens) == len(ssl_label)
+    # add [MASK] tag
+    for i, l in enumerate(ssl_label):
+        if l > 0:
+            tokens[i] = tokenizer.encode('[MASK]')[1] # [101, 103, 102]
+    datum['tokens_mask'] = np.array(tokens)
+    datum['ssl_label'] = np.array(ssl_label)
     return datum
 
 
@@ -457,7 +485,6 @@ class DA_SSL_dataset(torch.utils.data.Dataset):
         else:
             self.kg = None
 
-
     def split(self):
         labeled_src = self.source_data['labeled']
         # keys = self.source_data['unlabeled'].keys()
@@ -475,6 +502,110 @@ class DA_SSL_dataset(torch.utils.data.Dataset):
         return DA_SSL_train_dataset(train_labeled, unlabeled_src, unlabeled_tgt, self.max_seq_length, self.kg, self.memory_bank), \
                 DA_SSL_eval_dataset(dev_data, self.max_seq_length, self.kg, self.memory_bank), \
                 DA_SSL_eval_dataset(labeled_tgt, self.max_seq_length, self.kg, self.memory_bank)
+
+
+class Masked_DA_SSL_train_dataset(torch.utils.data.Dataset):
+    def __init__(self, source_labeled, source_unlabeled, target_unlabeled, max_seq_length, kg, memory_bank):
+        super(Masked_DA_SSL_train_dataset, self).__init__()
+        self.source_labeled = source_labeled
+        self.source_unlabeled = source_unlabeled
+        self.target_unlabeled = target_unlabeled
+        self.max_seq_length = max_seq_length
+        self.kg = kg
+        self.memory_bank = memory_bank
+        self.sl_len = len(self.source_labeled['text'])
+        self.su_len = len(self.source_unlabeled['text'])
+        self.tu_len = len(self.target_unlabeled['text'])
+        self.length = max(self.su_len, self.tu_len)
+        self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+
+    def __len__(self):
+        return self.length 
+        # return 2
+
+    def __getitem__(self, index):
+        import time
+        s = time.time()
+        sl_idx = int(index/self.length * self.sl_len)
+        # print(self.sl_len, self.su_len, self.tu_len, index)
+        if self.su_len < self.tu_len:
+            su_idx = int(index/self.length * self.su_len)
+            tu_idx = index
+        else:
+            tu_idx = int(index/self.length * self.tu_len)
+            su_idx = index
+        assert self.kg is not None
+        labeled_datum = {k: self.source_labeled[k][sl_idx] for k in self.source_labeled.keys()}        
+        labeled_datum = kbert_preprocess(labeled_datum, self.max_seq_length, self.kg, return_ssl_mask=True)
+        labeled_datum = Masked_SSL_preprocess(labeled_datum, self.max_seq_length, self.memory_bank, self.tokenizer)
+
+        src_unlabeled_datum = {k: self.source_unlabeled[k][su_idx] for k in self.source_unlabeled.keys()}        
+        src_unlabeled_datum = kbert_preprocess(src_unlabeled_datum, self.max_seq_length, self.kg, return_ssl_mask=True)
+        src_unlabeled_datum = Masked_SSL_preprocess(src_unlabeled_datum, self.max_seq_length, self.memory_bank, self.tokenizer)
+
+        tgt_unlabeled_datum = {k: self.target_unlabeled[k][tu_idx] for k in self.target_unlabeled.keys()}        
+        tgt_unlabeled_datum = kbert_preprocess(tgt_unlabeled_datum, self.max_seq_length, self.kg, return_ssl_mask=True)
+        tgt_unlabeled_datum = Masked_SSL_preprocess(tgt_unlabeled_datum, self.max_seq_length, self.memory_bank, self.tokenizer)
+        return labeled_datum, src_unlabeled_datum, tgt_unlabeled_datum
+        # 'tokens', 'labels', 'vm', 'pos', 'tokens_mask', 'vm_ssl', 'ssl_label', 'mask'
+
+
+
+
+class Masked_DA_SSL_eval_dataset(torch.utils.data.Dataset):
+    def __init__(self, labeled, max_seq_length, kg, memory_bank):
+        super(Masked_DA_SSL_eval_dataset, self).__init__()
+        self.labeled = labeled
+        self.max_seq_length = max_seq_length
+        self.kg = kg
+        self.memory_bank = memory_bank
+        self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+
+    def __len__(self):
+        return len(self.labeled['text'])
+
+    def __getitem__(self, index):
+        datum = {k: self.labeled[k][index] for k in self.labeled.keys()}
+        if self.kg is None:
+            datum = bert_preprocess(datum, self.max_seq_length, self.tokenizer)
+        else:
+            datum = kbert_preprocess(datum, self.max_seq_length, self.kg)
+        datum = SSL_preprocess(datum, self.max_seq_length, self.memory_bank, self.tokenizer)
+        return datum
+
+
+class Masked_DA_SSL_dataset(torch.utils.data.Dataset):
+    def __init__(self, args, source_reader, target_reader, graph_path, memory_bank, predicate=True):
+        super(Masked_DA_SSL_dataset,self).__init__()
+        self.source_data = source_reader.read_data()
+        self.target_data = target_reader.read_data()
+        self.max_seq_length = args.seq_length
+        self.memory_bank = memory_bank
+
+        memory_bank.initialize(self.source_data, self.target_data)
+        if args.use_kg:
+            self.kg = KnowledgeGraph(args, graph_path, predicate=predicate, vocab=None, memory_bank=memory_bank)
+        else:
+            self.kg = None
+
+
+    def split(self):
+        labeled_src = self.source_data['labeled']
+        # keys = self.source_data['unlabeled'].keys()
+        # unlabeled = {k: self.source_data['unlabeled'][k] + self.target_data['unlabeled'][k] for k in keys}
+        unlabeled_src = self.source_data['unlabeled']
+        unlabeled_tgt = self.target_data['unlabeled']
+        labeled_tgt = self.target_data['labeled']
+
+        len_dev = len(labeled_src['text'])
+        # inds = list(range(len_dev))
+        # random.shuffle(inds)
+        # labeled_src = {k:[labeled_src[k][i] for i in inds] for k in labeled_src.keys()}
+        dev_data = {k:labeled_src[k][len_dev//5*4:] for k in labeled_src.keys()}
+        train_labeled = {k:labeled_src[k][:len_dev//5*4] for k in labeled_src.keys()}
+        return Masked_DA_SSL_train_dataset(train_labeled, unlabeled_src, unlabeled_tgt, self.max_seq_length, self.kg, self.memory_bank), \
+                Masked_DA_SSL_eval_dataset(dev_data, self.max_seq_length, self.kg, self.memory_bank), \
+                Masked_DA_SSL_eval_dataset(labeled_tgt, self.max_seq_length, self.kg, self.memory_bank)
 
 
 
@@ -523,7 +654,8 @@ def create_vocab(sentence_list, vocab_size=10000):
 dataset_factory = {'causal_inference': Causal_Dataset,
                    'sentim': Causal_Dataset,
                    'domain_adaptation': DA_Dataset,
-                   'DA_SSL': DA_SSL_dataset}
+                   'DA_SSL': DA_SSL_dataset,
+                   'masked_DA_SSL': Masked_DA_SSL_dataset}
 
 if __name__ == '__main__':
     from utils.readers import reader_factory
@@ -556,6 +688,7 @@ if __name__ == '__main__':
     parser.add_argument('--confidence_threshold', type=float, default=0.9)
     parser.add_argument('--filter',default='default')
     parser.add_argument('--kg_path', default='')
+    parser.add_argument('--filter_conf', type=float, default=0.1)
 
     # parser.add_argument('--')
 
@@ -569,7 +702,7 @@ if __name__ == '__main__':
 
     args.pollution_rate = [0.7,0.9]
 
-    if args.task == 'domain_adaptation' or args.task=='DA_SSL':
+    if args.task == 'domain_adaptation' or args.task=='DA_SSL' or args.task=='masked_DA_SSL':
         source = args.source
         if '.' in source:
             # print('source')
@@ -615,7 +748,7 @@ if __name__ == '__main__':
     # vocab = Vocab()
     # vocab.load(args.vocab_path)
     # args.vocab = vocab
-    exit()
+    # exit()
     # source_reader = reader_factory['bdek']('books','source')
     # target_reader = reader_factory['bdek']('kitchen','target')
 
@@ -639,20 +772,24 @@ if __name__ == '__main__':
     # nltk.download('punkt')
     from transformers import BertTokenizer
     t = BertTokenizer.from_pretrained('bert-base-uncased')
-    for i, (labeled_batch,_) in enumerate(train_loader):
-        # print(labeled_batch.keys())
+    for i, (labeled_batch,src_unlabeled_batch,_) in enumerate(train_loader):
+        print(labeled_batch.keys())
         print(i)
-        print(labeled_batch['tokens'][0])
+        print(src_unlabeled_batch['tokens'][0])
+        print(src_unlabeled_batch['tokens_mask'][0])
+        print(src_unlabeled_batch['ssl_label'][0])
         # print(labeled_batch['mask'][0])
-        print(labeled_batch['pos'][0])
+        print(src_unlabeled_batch['pos'][0])
         # # print(torch.all(labeled_batch['vm']==1))
         # # print(labeled_batch['tokens_kg'][0])
         # # print(labeled_batch['pos'][0])
-        print(labeled_batch['vm'][0][-16:,-16:])
+        print(src_unlabeled_batch['vm'][0][-16:,-16:])
+        print(src_unlabeled_batch['vm_ssl'][0][-16:,-16:])
+
         # # print(labeled_batch['text'][0])
         # # print(labeled_batch['label'])
-        print(t.decode(labeled_batch['tokens'][0]))
-        print(labeled_batch['text'][0])
+        # print(t.decode(labeled_batch['tokens'][0]))
+        # print(labeled_batch['text'][0])
         # # print(labeled_batch['ssl_label'][0])
         # # ssl_label = (labeled_batch['ssl_label'][0]!=-1) * labeled_batch['ssl_label'][0]
         # # print(t.decode(ssl_label))

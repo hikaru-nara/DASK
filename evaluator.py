@@ -102,7 +102,6 @@ class SSL_kbert_Evaluator(object):
         logger.info('-------Start evaluation-------')
         with torch.no_grad():
             for i, batch_data in enumerate(tqdm(eval_loader)):
-                
                 tokens_kg, mask_kg, labels, tokens_org, mask_org = batch_data['tokens_kg'], batch_data['mask_kg'], \
                  batch_data['label'], batch_data['tokens_org'], batch_data['mask_org']
 
@@ -437,5 +436,6 @@ evaluator_factory = {
         'kbert_two_stage_da': kbert_two_stage_Evaluator,
         'DANN_kbert': DANN_Evaluator,
         'SSL_kbert': SSL_kbert_Evaluator,
-        'SSL_kbert_DANN': SSL_kbert_Evaluator
+        'SSL_kbert_DANN': SSL_kbert_Evaluator,
+        'masked_SSL_kbert': SSL_kbert_Evaluator
         }
