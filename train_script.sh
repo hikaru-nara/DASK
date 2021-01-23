@@ -56,31 +56,14 @@
     # --vocab_path ./models/multi_cased_L-12_H-768_A-12/vocab.txt \
 
 # SSL DA
-# CUDA_VISIBLE_DEVICES='7,8,9,10' python train.py \
-#     --source bdek.kitchen \
-#     --target bdek.dvd \
-#     --model_name SSL_kbert \
-#     --task DA_SSL \
-#     --epochs_num 100 --batch_size 16 \
-#     --log_dir log/DA_SSL_KD_0117 \
-#     --seq_length 256 \
-#     --learning_rate 2e-5 \
-#     --pooling first \
-#     --num_workers 32 \
-#     --print_freq 100 \
-#     --pretrained_model_path ./models/pytorch-bert-uncased/pytorch_model.bin \
-#     --min_occur 10 \
-#     --num_pivots 500 \
-#     --ssl_warmup 0.5 \
-#     --update
-
-# CUDA_VISIBLE_DEVICES='0,1,2' python train.py \
+# CUDA_VISIBLE_DEVICES='0,1,6' python3 train.py \
 #     --source bdek.books \
 #     --target bdek.electronics \
 #     --model_name SSL_kbert \
 #     --task DA_SSL \
-#     --epochs_num 10 --batch_size 12 \
-#     --log_dir log/DA_SSL_P_BE_0117 \
+#     --epochs_num 10 --batch_size 24 \
+#     --kg_path data/results/electronics_unlabeled_org \
+#     --log_dir log/BE_SSL_update_P_0117 \
 #     --seq_length 256 \
 #     --learning_rate 2e-5 \
 #     --pooling first \
@@ -90,9 +73,10 @@
 #     --min_occur 10 \
 #     --num_pivots 500 \
 #     --ssl_warmup 0.5 \
-#     --use_kg \
-#     --kg_path 'data/results/electronics_unlabeled_org' \
-#     --update 
+#     --lambda_ssl 0.01 \
+#     --update_rate 0.01 \
+#     --update \
+#     --use_kg 
     # --config_path ./models/google_config.json \
     # --vocab_path ./models/pytorch-bert-uncased/vocab.txt \
 #Pbert
@@ -115,12 +99,12 @@
 #     --balanced_interval 7
 
 # Pbert + SSL
-CUDA_VISIBLE_DEVICES='4,5,6,15' python train.py \
+CUDA_VISIBLE_DEVICES='6,7,2' python train.py \
     --source bdek.books \
     --target bdek.electronics \
     --model_name SSL_kbert \
     --task DA_SSL \
-    --epochs_num 10 --batch_size 32 \
+    --epochs_num 100 --batch_size 16 \
     --kg_path data/results/electronics_unlabeled_org \
     --log_dir log/BE_PbertSSL_0120_balanced \
     --seq_length 256 \
@@ -131,8 +115,9 @@ CUDA_VISIBLE_DEVICES='4,5,6,15' python train.py \
     --pretrained_model_path ./models/pytorch-bert-uncased/pytorch_model.bin \
     --min_occur 10 \
     --ssl_warmup 0.5 \
+    --lambda_ssl 0.01 \
     --use_kg \
-    --balanced_interval 7
+    --balanced_interval 10
 
 #Pbert eval
 # CUDA_VISIBLE_DEVICES='0,1,2' python3 evaluate.py \
@@ -159,7 +144,7 @@ CUDA_VISIBLE_DEVICES='4,5,6,15' python train.py \
 #     --target bdek.electronics \
 #     --model_name SSL_kbert_DANN \
 #     --task DA_SSL \
-#     --epochs_num 10 --batch_size 32 \
+#     --epochs_num 4 --batch_size 32 \
 #     --kg_path data/results/electronics_unlabeled_org \
 #     --log_dir log/DA_Pbert_DANN_0117 \
 #     --seq_length 256 \
@@ -172,5 +157,7 @@ CUDA_VISIBLE_DEVICES='4,5,6,15' python train.py \
 #     --config_path ./models/google_config.json \
 #     --vocab_path ./models/pytorch-bert-uncased/vocab.txt \
 #     --use_kg \
-#     --gamma 0.5
+#     --gamma 0.5 \
+#     --lambda_ssl 0.2 \
+#     --ssl_warmup 0
 
