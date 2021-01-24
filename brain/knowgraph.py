@@ -145,9 +145,9 @@ class KnowledgeGraph(object):
         # split_sent = sentence.split(' ')
         split_sent = word_tokenize(sentence)
 
-        pos_tag = nltk.pos_tag(split_sent, tagset='universal')
+        # pos_tag = nltk.pos_tag(split_sent, tagset='universal')
         if add_special_tokens:
-            pos_tag = [(CLS_TOKEN, 'X')] + pos_tag
+            # pos_tag = [(CLS_TOKEN, 'X')] + pos_tag
             split_sent = [CLS_TOKEN] + split_sent
         # pos_tag = nltk.pos_tag(split_sent)
         # split_sent = [standardize(token) for token in split_sent]
@@ -158,11 +158,11 @@ class KnowledgeGraph(object):
             # print(self.add_kg_pos)
             self.add_kg_vocab = self.memory_bank.pivots
             if self.add_kg_vocab is None:
-                if pos_tag[idx][1] in self.add_kg_pos and token != 'i':
+                # if pos_tag[idx][1] in self.add_kg_pos and token != 'i':
                     # print('add knowledge')
-                    entities = list(self.lookup_table.get(token, []))[:max_entities]
-                else:
-                    entities = []
+                entities = list(self.lookup_table.get(token, []))[:max_entities]
+                # else:
+                #     entities = []
             else:
                 # print(token)
                 # print(token in self.add_kg_vocab)

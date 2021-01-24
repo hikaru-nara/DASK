@@ -1017,11 +1017,12 @@ class masked_SSL_kbert_Trainer(object):
 			logits = model(kg_input=(tokens1, mask1, pos1, vm1), ssl_label=None)
 
 			if self.args.update:
-				# src unlabeled data
-				logits2 = model(kg_input=(tokens2, mask2, pos2, vm2), ssl_label=None)
+				with torch.no_grad():
+					# src unlabeled data
+					logits2 = model(kg_input=(tokens2, mask2, pos2, vm2), ssl_label=None)
 
-				# tgt unlabeled data
-				logits3 = model(kg_input=(tokens3, mask3, pos3, vm3), ssl_label=None)
+					# tgt unlabeled data
+					logits3 = model(kg_input=(tokens3, mask3, pos3, vm3), ssl_label=None)
 			
 			# ssl
 			pivot_preds = model(kg_input=(tokens_all, mask_all, pos_all, vm_ssl_all), ssl_label=ssl_label)

@@ -536,23 +536,16 @@ class Masked_DA_SSL_train_dataset(torch.utils.data.Dataset):
             tu_idx = int(index/self.length * self.tu_len)
             su_idx = index
         assert self.kg is not None
-        import time
-        time1 = time.time()
         labeled_datum = {k: self.source_labeled[k][sl_idx] for k in self.source_labeled.keys()}        
 
         labeled_datum = kbert_preprocess(labeled_datum, self.max_seq_length, self.kg, return_ssl_mask=True)
-        time2 = time.time()
         labeled_datum = Masked_SSL_preprocess(labeled_datum, self.max_seq_length, self.memory_bank, self.tokenizer)
-        time3 = time.time()
         src_unlabeled_datum = {k: self.source_unlabeled[k][su_idx] for k in self.source_unlabeled.keys()}        
         src_unlabeled_datum = kbert_preprocess(src_unlabeled_datum, self.max_seq_length, self.kg, return_ssl_mask=True)
         src_unlabeled_datum = Masked_SSL_preprocess(src_unlabeled_datum, self.max_seq_length, self.memory_bank, self.tokenizer)
-        time4 = time.time()
         tgt_unlabeled_datum = {k: self.target_unlabeled[k][tu_idx] for k in self.target_unlabeled.keys()}        
         tgt_unlabeled_datum = kbert_preprocess(tgt_unlabeled_datum, self.max_seq_length, self.kg, return_ssl_mask=True)
         tgt_unlabeled_datum = Masked_SSL_preprocess(tgt_unlabeled_datum, self.max_seq_length, self.memory_bank, self.tokenizer)
-        time5 = time.time()
-        # print(time2-time1, time3-time2, time4-time3, time5-time4)
         labeled_datum.pop('src_pos')
         src_unlabeled_datum.pop('src_pos')
         tgt_unlabeled_datum.pop('src_pos')
