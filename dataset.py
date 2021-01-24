@@ -211,6 +211,7 @@ def Masked_SSL_preprocess(datum, max_seq_length, memory_bank, tokenizer):
             tokens[i] = tokenizer.encode('[MASK]')[1] # [101, 103, 102]
     datum['tokens_mask'] = np.array(tokens)
     datum['ssl_label'] = np.array(ssl_label)
+    datum['src_pos'] = np.array(datum['src_pos'])
     return datum
 
 
@@ -309,8 +310,7 @@ class DA_train_dataset(torch.utils.data.Dataset):
         self.max_seq_length = max_seq_length
         self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
         self.kg = kg
-        print('dataset 284')
-        print(self.len_labeled,self.len_unlabeled)
+        
         # self.augmenter = augmenter
 
     def __len__(self):
@@ -446,6 +446,7 @@ class DA_SSL_train_dataset(torch.utils.data.Dataset):
         else:
             tgt_unlabeled_datum = kbert_preprocess(tgt_unlabeled_datum, self.max_seq_length, self.kg)
         tgt_unlabeled_datum = SSL_preprocess(tgt_unlabeled_datum, self.max_seq_length, self.memory_bank, self.tokenizer)
+        
         return labeled_datum, src_unlabeled_datum, tgt_unlabeled_datum
 
 
@@ -535,17 +536,27 @@ class Masked_DA_SSL_train_dataset(torch.utils.data.Dataset):
             tu_idx = int(index/self.length * self.tu_len)
             su_idx = index
         assert self.kg is not None
+        import time
+        time1 = time.time()
         labeled_datum = {k: self.source_labeled[k][sl_idx] for k in self.source_labeled.keys()}        
-        labeled_datum = kbert_preprocess(labeled_datum, self.max_seq_length, self.kg, return_ssl_mask=True)
-        labeled_datum = Masked_SSL_preprocess(labeled_datum, self.max_seq_length, self.memory_bank, self.tokenizer)
 
+        labeled_datum = kbert_preprocess(labeled_datum, self.max_seq_length, self.kg, return_ssl_mask=True)
+        time2 = time.time()
+        labeled_datum = Masked_SSL_preprocess(labeled_datum, self.max_seq_length, self.memory_bank, self.tokenizer)
+        time3 = time.time()
         src_unlabeled_datum = {k: self.source_unlabeled[k][su_idx] for k in self.source_unlabeled.keys()}        
         src_unlabeled_datum = kbert_preprocess(src_unlabeled_datum, self.max_seq_length, self.kg, return_ssl_mask=True)
         src_unlabeled_datum = Masked_SSL_preprocess(src_unlabeled_datum, self.max_seq_length, self.memory_bank, self.tokenizer)
-
+        time4 = time.time()
         tgt_unlabeled_datum = {k: self.target_unlabeled[k][tu_idx] for k in self.target_unlabeled.keys()}        
         tgt_unlabeled_datum = kbert_preprocess(tgt_unlabeled_datum, self.max_seq_length, self.kg, return_ssl_mask=True)
         tgt_unlabeled_datum = Masked_SSL_preprocess(tgt_unlabeled_datum, self.max_seq_length, self.memory_bank, self.tokenizer)
+        time5 = time.time()
+        # print(time2-time1, time3-time2, time4-time3, time5-time4)
+        labeled_datum.pop('src_pos')
+        src_unlabeled_datum.pop('src_pos')
+        tgt_unlabeled_datum.pop('src_pos')
+        
         return labeled_datum, src_unlabeled_datum, tgt_unlabeled_datum
         # 'tokens', 'labels', 'vm', 'pos', 'tokens_mask', 'vm_ssl', 'ssl_label', 'mask'
 
@@ -762,7 +773,7 @@ if __name__ == '__main__':
     collate_fn_train = collate_factory_train[args.model]
     # train_sampler = torch.utils.data.RandomSampler(train_dataset)
     # dev_sampler = torch.utils.data.RandomSampler(dev_dataset)
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=2, num_workers=0, collate_fn=collate_fn_train)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, num_workers=0, collate_fn=collate_fn_train)
     dev_loader = torch.utils.data.DataLoader(dev_dataset, batch_size=16, num_workers=0, collate_fn=collate_fn_eval)
     eval_loader = torch.utils.data.DataLoader(eval_dataset, batch_size=1, num_workers=0, collate_fn=collate_fn_eval)
 
