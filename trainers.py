@@ -620,6 +620,8 @@ class DANN_Trainer(object):
 			if self.args.use_kg:
 				pos, vm = labeled_data['pos'].to(device).long(), labeled_data['vm'].to(device).long()
 				pos_u, vm_u = unlabeled_data['pos'].to(device).long(), unlabeled_data['vm'].to(device).long()
+			else:
+				pos, vm, pos_u, vm_u = None, None, None, None
 			# input_ids_t, masks_t, doms_t = \
 			# 	(unlabeled_tgt_data[k].to(device) for k in ['tokens', 'mask', 'domain'])
 
