@@ -26,8 +26,13 @@ class MemoryBank(object):
 		self.conf_threshold = args.confidence_threshold
 		self.update_times = {'source':0, 'target':0}
 		self.total_times = {'source':0, 'target':0}
-		self.redo = True
+		self.redo = False
 		self.valid_tags = ['NOUN','ADJ','ADV','VERB']
+		if '.' in self.source:
+			datadir = os.path.join('amazon-review-old',self.source.split('.')[-1])
+		else:
+			datadir = 'airlines'
+		self.datadir = os.path.join('data',datadir)
 		# subword pivot?
 
 	def initialize(self, source_data, target_data):
@@ -40,7 +45,7 @@ class MemoryBank(object):
 		source_labeled_text = source_data['labeled']['text']
 		source_label = source_data['labeled']['label']
 		source_unlabeled_text = source_data['unlabeled']['text']
-		source_freq_filename = 'data/amazon-review-old/{}/all_freq.pkl'.format(self.source.split('.')[-1]) # filename needs generalized
+		source_freq_filename = os.path.join(self.datadir,'all_freq.pkl') # filename needs generalized
 		if os.path.exists(source_freq_filename) and not self.redo:
 			with open(source_freq_filename, 'rb') as f:
 				source_word_freq = pkl.load(f)
@@ -49,7 +54,7 @@ class MemoryBank(object):
 			with open(source_freq_filename, 'wb') as f:
 				pkl.dump(source_word_freq, f)
 		self.source_freq = source_word_freq.copy()
-		target_freq_filename = 'data/amazon-review-old/{}/un_freq.pkl'.format(self.target.split('.')[-1])
+		target_freq_filename = os.path.join(self.datadir,'un_freq.pkl')
 		target_unlabeled_text = target_data['unlabeled']['text']
 		if os.path.exists(target_freq_filename) and not self.redo:
 			with open(target_freq_filename, 'rb') as f:
@@ -66,7 +71,7 @@ class MemoryBank(object):
 		self.common_words = common_words
 
 		# step2: calculate sentiment score of those common words in source domain
-		sentiment_score_filename = 'data/amazon-review-old/{}/sentiment.pkl'.format(self.source.split('.')[-1])
+		sentiment_score_filename = os.path.join(self.datadir,'sentiment.pkl')
 		if os.path.exists(sentiment_score_filename) and not self.redo:
 			with open(sentiment_score_filename, 'rb') as f:
 				sentiment_score = pkl.load(f)
