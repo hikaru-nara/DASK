@@ -185,10 +185,13 @@ optimizer_factory ={
     'causal': causal_optimizer,
     'sentim': da_optimizer,
     'base_DA': da_optimizer,
+    'base_DA_roberta': da_optimizer,
     'kbert_two_stage_sentim': da_optimizer,
     'kbert_two_stage_da': da_optimizer,
     'DANN_kbert': da_optimizer,
+    'DANN_kroberta': da_optimizer,
     'SSL_kbert': da_optimizer,
     'SSL_kbert_DANN': da_optimizer,
-    'masked_SSL_kbert': da_optimizer
+    'masked_SSL_kbert': da_optimizer,
+    'masked_SSL_kroberta': da_optimizer
 }

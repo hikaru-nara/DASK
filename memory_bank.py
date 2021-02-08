@@ -26,7 +26,7 @@ class MemoryBank(object):
 		self.conf_threshold = args.confidence_threshold
 		self.update_times = {'source':0, 'target':0}
 		self.total_times = {'source':0, 'target':0}
-		self.redo = False
+		self.redo = True
 		self.valid_tags = ['NOUN','ADJ','ADV','VERB']
 		if '.' in self.source:
 			datadir = os.path.join('amazon-review-old',self.source.split('.')[-1])

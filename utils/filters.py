@@ -34,7 +34,10 @@ class confidenceFilter(defaultGraphFilter):
 					lst = line.split('\t')
 					if(len(lst)<=3):
 						continue
-					conf = float(lst[3][:-1])
+					try:
+						conf = float(lst[3][:-1])
+					except:
+						continue
 					if conf>self.conf_thres: 
 						g.write('\t'.join(lst[:3])+'\n')
 
@@ -46,7 +49,7 @@ filter_factory = {
 if __name__ == "__main__":
 	import numpy as np 
 	conf_lst = []
-	gp = 'data/results/electronics_unlabeled_org'
+	gp = 'data/results/da_org'
 	with open(gp,'r') as f:
 		for line in f:
 			lst = line.split('\t')

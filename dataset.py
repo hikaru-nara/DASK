@@ -10,7 +10,7 @@ import operator
 import re
 # import xml.etree.ElementTree as ET
 # from wrapper_tokenizer import gpt2_tokenizer
-from transformers import BertTokenizer
+from transformers import BertTokenizer, RobertaTokenizer
 import nltk
 from nltk.tokenize import sent_tokenize, word_tokenize
 import math
@@ -301,14 +301,18 @@ class Causal_Dataset(object):
 
 class DA_train_dataset(torch.utils.data.Dataset):
     # incomplete
-    def __init__(self, labeled_data, unlabeled_data, max_seq_length, kg):
+    def __init__(self, labeled_data, unlabeled_data, max_seq_length, kg, model_name='bert'):
         super(DA_train_dataset, self).__init__()
         self.labeled_data = labeled_data
         self.unlabeled_data = unlabeled_data
         self.len_labeled = len(self.labeled_data['text'])
         self.len_unlabeled = len(self.unlabeled_data['text'])
         self.max_seq_length = max_seq_length
-        self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+        # self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+        if model_name == 'bert':
+            self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+        elif model_name == 'roberta':
+            self.tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
         self.kg = kg
         
         # self.augmenter = augmenter
@@ -338,11 +342,14 @@ class DA_train_dataset(torch.utils.data.Dataset):
 
 class DA_test_dataset(torch.utils.data.Dataset):
     # incomplete
-    def __init__(self, labeled_data, max_seq_length, kg):
+    def __init__(self, labeled_data, max_seq_length, kg, model_name='bert'):
         super(DA_test_dataset, self).__init__()
         self.labeled_data = labeled_data
         self.max_seq_length = max_seq_length
-        self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+        if model_name == 'bert':
+            self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+        elif model_name == 'roberta':
+            self.tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
         self.kg = kg
         # self.augmenter = augmenter
 
@@ -377,6 +384,8 @@ class DA_Dataset(torch.utils.data.Dataset):
             self.kg = KnowledgeGraph(args, graph_path, predicate=predicate, memory_bank=memory_bank, vocab=self.vocab)
         else:
             self.kg = None
+        self.model_name = 'roberta' if 'roberta' in args.model_name else 'bert'
+        print('modelname dataset: ', self.model_name)
 
     def split(self):
         labeled_src = self.source_data['labeled']
@@ -390,9 +399,9 @@ class DA_Dataset(torch.utils.data.Dataset):
         labeled_src = {k:[labeled_src[k][i] for i in inds] for k in labeled_src.keys()}
         dev_data = {k:labeled_src[k][len_dev//5*4:] for k in labeled_src.keys()}
         train_labeled = {k:labeled_src[k][:len_dev//5*4] for k in labeled_src.keys()}
-        return DA_train_dataset(train_labeled, unlabeled, self.max_seq_length, self.kg), \
-                DA_test_dataset(dev_data, self.max_seq_length, self.kg), \
-                DA_test_dataset(labeled_tgt, self.max_seq_length, self.kg)
+        return DA_train_dataset(train_labeled, unlabeled, self.max_seq_length, self.kg, self.model_name), \
+                DA_test_dataset(dev_data, self.max_seq_length, self.kg, self.model_name), \
+                DA_test_dataset(labeled_tgt, self.max_seq_length, self.kg, self.model_name)
 
 
 class DA_SSL_train_dataset(torch.utils.data.Dataset):
@@ -715,7 +724,7 @@ if __name__ == '__main__':
             domain_name = lst[1]
             source_reader = reader_factory[dataset_name](domain_name, 'source')
         else:
-            source_reader = reader_factory[args.source]()
+            source_reader = reader_factory[args.source]('source')
 
         target = args.target
         if '.' in target:
@@ -724,14 +733,15 @@ if __name__ == '__main__':
             domain_name = lst[1]
             target_reader = reader_factory[dataset_name](domain_name, 'target')
         else:
-            target_reader = reader_factory[args.target]()
+            target_reader = reader_factory[args.target]('target')
 
         # if args.task == 'DA_SSL':
         memory_bank = MemoryBank(args)
         dataset = dataset_factory[args.task](args, source_reader, target_reader, graph_path=args.kg_path, memory_bank=memory_bank)
-        lst1 = source.split('.')
-        lst2 = target.split('.')
-        filename = '{}{}_pivots.txt'.format(lst1[1][0],lst2[1][0])
+
+        name1 = source.split('.')[1][0] if args.source != 'airlines' else 'a'
+        name2 = target.split('.')[1][0] if args.target != 'airlines' else 'a'
+        filename = '{}{}_pivots.txt'.format(name1,name2)
         with open(os.path.join('data',filename), 'w') as f:
             for p in memory_bank.pivots:
                 f.write(p+'\n')
@@ -752,7 +762,7 @@ if __name__ == '__main__':
     # vocab = Vocab()
     # vocab.load(args.vocab_path)
     # args.vocab = vocab
-    # exit()
+    exit()
     # source_reader = reader_factory['bdek']('books','source')
     # target_reader = reader_factory['bdek']('kitchen','target')
 

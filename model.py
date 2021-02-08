@@ -16,6 +16,7 @@ from torch.autograd import Function
 # from transformers import BertModel, BertConfig, BertTokenizer
 from pytorch_transformers.kbert_model import BertModel
 from pytorch_transformers.model_config import BertConfig
+from transformers import RobertaConfig
 
 class ReverseLayerF(Function):
 	'''
@@ -173,6 +174,52 @@ class BertClassifier(nn.Module):
 			output, _, all_attentions = outputs[0], outputs[1], outputs[2]
 		else:
 			output = self.bert(src, mask, position_ids=pos, visible_matrix=vm, output_attentions=output_attention, only_first_vm=only_first_vm)[0]
+		# print(output.shape)
+		# Target.
+		if self.pooling == "mean":
+			output = torch.mean(output, dim=1)
+		elif self.pooling == "max":
+			output = torch.max(output, dim=1)[0]
+		elif self.pooling == "last":
+			output = output[:, -1, :]
+		else:
+			output = output[:, 0, :]
+		
+		if output_attention:
+			
+			return self.classifier(output), list(all_attentions)
+		else:
+			return self.classifier(output)
+
+class RobertaClassifier(nn.Module):
+	def __init__(self, args):
+		super(RobertaClassifier, self).__init__()
+		config = RobertaConfig.from_pretrained('roberta-base')
+		self.roberta = BertModel(config=config, add_pooling_layer=False)
+		self.labels_num = 2
+		self.classifier = torch.nn.Sequential(
+			nn.Linear(args.hidden_size, args.hidden_size),
+			nn.Dropout(args.dropout),
+			nn.ReLU(),
+			nn.Linear(args.hidden_size, self.labels_num)
+		)
+		
+		self.use_vm = False if args.no_vm else True
+		self.pooling = args.pooling
+		print("[RoBertaClassifier] use visible_matrix: {}".format(self.use_vm))
+
+	def forward(self, src, mask, pos=None, vm=None, output_attention=False, only_first_vm=False):
+		"""
+		Args:
+			src: [batch_size x seq_length]
+			label: [batch_size]
+			mask: [batch_size x seq_length]
+		"""
+		if output_attention:
+			outputs = self.roberta(src, mask, position_ids=pos, visible_matrix=vm, output_attentions=output_attention, only_first_vm=only_first_vm)
+			output, _, all_attentions = outputs[0], outputs[1], outputs[2]
+		else:
+			output = self.roberta(src, mask, position_ids=pos, visible_matrix=vm, output_attentions=output_attention, only_first_vm=only_first_vm)[0]
 		# print(output.shape)
 		# Target.
 		if self.pooling == "mean":
@@ -581,6 +628,64 @@ class DANN_kbert(nn.Module):
 		return class_preds, labeled_preds, unlabeled_preds
 
 
+
+class DANN_kroberta(nn.Module):
+	def __init__(self, args):
+		super(DANN_kroberta, self).__init__()
+		print("Initializing main bert model...")
+		model_config = RobertaConfig.from_pretrained('roberta-base')
+		self.roberta = BertModel(config=model_config, add_pooling_layer=False)
+		self.labels_num = 2
+		self.cc = torch.nn.Sequential(
+			nn.Linear(args.hidden_size, args.hidden_size),
+			nn.ReLU(),
+			nn.Linear(args.hidden_size, self.labels_num)
+		)
+		self.dc = torch.nn.Sequential(
+			nn.Linear(args.hidden_size, args.hidden_size),
+			nn.ReLU(),
+			nn.Linear(args.hidden_size, 2)
+		)
+		self.pooling = args.pooling
+
+	def feature_extractor(self, tokens, masks, pos, vm):
+		output = self.roberta(tokens, masks, position_ids=pos, visible_matrix=vm)[0]
+		if self.pooling == "mean":
+			output = torch.mean(output, dim=1)
+		elif self.pooling == "max":
+			output = torch.max(output, dim=1)[0]
+		elif self.pooling == "last":
+			output = output[:, -1, :]
+		else:
+			output = output[:, 0, :]
+		return output
+
+	def class_classifier(self, input):
+		return self.cc(input)
+
+	def domain_classifier(self, input, constant):
+		input = GradReverse.grad_reverse(input, constant)
+		return self.dc(input)
+
+	def forward(self, input_ids, masks, pos=None, vm=None, input_ids2=None, masks2=None, pos2=None, vm2=None, \
+		constant=None, visualize=False, output_attention=False):
+		# feature of labeled data (source)
+		feature_labeled = self.feature_extractor(input_ids, masks, pos, vm)
+		# compute the class preds of src_feature
+		class_preds = self.class_classifier(feature_labeled)
+		if input_ids2 is None:
+			if visualize is False:
+				return class_preds
+			else:
+				return class_preds, class_preds, feature_labeled
+		# feature of unlabeled data (source and target)
+		feature_unlabeled = self.feature_extractor(input_ids2, masks2, pos2, vm2)
+		# compute the domain preds of src_feature and target_feature
+		labeled_preds = self.domain_classifier(feature_labeled, constant)
+		unlabeled_preds = self.domain_classifier(feature_unlabeled, constant)
+		return class_preds, labeled_preds, unlabeled_preds
+
+
 class SSL_kbert(nn.Module):
 	def __init__(self, args):
 		super(SSL_kbert, self).__init__()
@@ -781,6 +886,67 @@ class masked_SSL_kbert(nn.Module):
 			return pivot_preds
 
 
+
+class masked_SSL_kroberta(nn.Module):
+	def __init__(self, args):
+		super(masked_SSL_kroberta, self).__init__()
+		# model_config = BertConfig.from_pretrained('./models/pytorch-bert-uncased/bert-base-uncased/bert_config.json')
+		model_config = RobertaConfig.from_pretrained('roberta-base')
+		self.roberta = BertModel(config=model_config, add_pooling_layer=False)
+		# self.kbert = BertModel.from_pretrained('bert-base-uncased', config=model_config)
+		self.labels_num = 2
+		self.classifier = torch.nn.Sequential(
+			nn.Linear(args.hidden_size, args.hidden_size),
+			nn.Dropout(args.dropout),
+			nn.ReLU(),
+			nn.Linear(args.hidden_size, self.labels_num)
+		)
+		# self.decoder = nn.Linear(args.hidden_size, model_config.vocab_size)
+		self.decoder = torch.nn.Sequential(
+			nn.Linear(args.hidden_size, args.hidden_size),
+			nn.Dropout(args.dropout),
+			nn.ReLU(),
+			nn.Linear(args.hidden_size, model_config.vocab_size)
+		)
+		self.pooling = args.pooling
+		self.args = args
+
+	def pooler(self, feature):
+		if self.pooling == "mean":
+			output = torch.mean(feature, dim=1)
+		elif self.pooling == "max":
+			output = torch.max(feature, dim=1)[0]
+		elif self.pooling == "last":
+			output = feature[:, -1, :]
+		else:
+			output = feature[:, 0, :]
+		return output
+
+	def forward(self, kg_input=None, ssl_label=None):
+		"""
+		Args:
+			tokens_kg: [batch_size x seq_length], sentence with knowledge from graph
+			tokens_org: [batch_size x seq_length], sentence without extra knowledge, but contain more part of orginal sentence
+			mask_kg: padding mask for tokens_kg
+			mask_org: padding mask for tokens_org
+			pos: position_id for tokens_kg
+			vm: visible_matrix for tokens_kg
+			output_attention: whether or not to output attention mask for each layer and each attention head
+		"""
+		tokens_kg, mask_kg, pos, vm = kg_input
+		output = self.roberta(tokens_kg, mask_kg, position_ids=pos, visible_matrix=vm)[0]
+		if ssl_label is None:
+			logits = self.classifier(self.pooler(output))
+			return logits
+		else:
+			assert tokens_kg.shape == ssl_label.shape
+			output = output.view(-1, self.args.hidden_size)
+			pivot_index = (ssl_label.view(-1) > 0).nonzero().view(-1)
+			output_pivot = torch.index_select(output, dim=0, index=pivot_index)
+			pivot_preds = self.decoder(output_pivot)
+			return pivot_preds
+
+
 model_factory = {
 				'graph_causal': None,
 				'graph': graph_domain_adaptation_net,
@@ -789,9 +955,12 @@ model_factory = {
 				'kbert_two_stage_da': KBert_two_stage,
 				'sentim': BertClassifier,
 				'base_DA': BertClassifier,
+				'base_DA_roberta': RobertaClassifier,
 				'DANN_kbert': DANN_kbert,
+				'DANN_kroberta': DANN_kroberta,
 				'SSL_kbert': SSL_kbert,
 				'SSL_kbert_DANN': SSL_kbert_DANN,
-				'masked_SSL_kbert': masked_SSL_kbert
+				'masked_SSL_kbert': masked_SSL_kbert,
+				'masked_SSL_kroberta': masked_SSL_kroberta
 				}
 

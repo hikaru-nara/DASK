@@ -432,10 +432,13 @@ evaluator_factory = {
         'causal': causal_Evaluator,
         'sentim': sentim_Evaluator,
         'base_DA': sentim_Evaluator,
+        'base_DA_roberta': sentim_Evaluator,
         'kbert_two_stage_sentim': kbert_two_stage_Evaluator,
         'kbert_two_stage_da': kbert_two_stage_Evaluator,
         'DANN_kbert': DANN_Evaluator,
+        'DANN_kroberta': DANN_Evaluator,
         'SSL_kbert': SSL_kbert_Evaluator,
         'SSL_kbert_DANN': SSL_kbert_Evaluator,
-        'masked_SSL_kbert': SSL_kbert_Evaluator
+        'masked_SSL_kbert': SSL_kbert_Evaluator,
+        'masked_SSL_kroberta': SSL_kbert_Evaluator
         }

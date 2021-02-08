@@ -188,7 +188,7 @@ if __name__=='__main__':
 			domain_name = lst[1]
 			source_reader = reader_factory[dataset_name](domain_name, 'source')
 		else:
-			source_reader = reader_factory[args.source]()
+			source_reader = reader_factory[args.source]('source')
 
 		target = args.target
 		if '.' in target:
@@ -197,7 +197,7 @@ if __name__=='__main__':
 			domain_name = lst[1]
 			target_reader = reader_factory[dataset_name](domain_name, 'target')
 		else:
-			target_reader = reader_factory[args.target]()
+			target_reader = reader_factory[args.target]('target')
 		
 		# if args.task == 'DA_SSL':
 		memory_bank = MemoryBank(args)
@@ -256,10 +256,9 @@ if __name__=='__main__':
 			state_dict = {}
 			for k,v in pretrained_state_dict.items():
 				spk = k.split('.')
-				# if spk[0]=='bert':
-					
-				if spk[-2]=='LayerNorm':
-					spk[-1] = 'weight' if spk[-1]=='gamma' else 'bias'
+				if spk[0]=='bert':
+					if spk[-2]=='LayerNorm':
+						spk[-1] = 'weight' if spk[-1]=='gamma' else 'bias'
 
 				k = '.'.join(spk)
 				state_dict[k]=v

@@ -59,22 +59,28 @@ collate_factory_train={
 	'sentim': None,
 	'causal': None,
 	'base_DA': None,
+	'base_DA_roberta': None,
 	'kbert_two_stage_sentim': kbert_two_stage_collate_fn,
 	'kbert_two_stage_da': kbert_two_stage_collate_fn_2item,
 	'DANN_kbert': None,
+	'DANN_kroberta': None,
 	'SSL_kbert': kbert_ssl_collate_fn_3,
 	'SSL_kbert_DANN': kbert_ssl_collate_fn_3,
-	'masked_SSL_kbert': None
+	'masked_SSL_kbert': None,
+	'masked_SSL_kroberta': None
 }
 
 collate_factory_eval={
 	'sentim': None,
 	'causal': None,
 	'base_DA': None,
+	'base_DA_roberta': None,
 	'kbert_two_stage_sentim': kbert_two_stage_collate_fn,
 	'kbert_two_stage_da': kbert_two_stage_collate_fn,
 	'DANN_kbert': None,
+	'DANN_kroberta': None,
 	'SSL_kbert': kbert_two_stage_collate_fn,
 	'SSL_kbert_DANN': kbert_two_stage_collate_fn,
-	'masked_SSL_kbert': kbert_two_stage_collate_fn
+	'masked_SSL_kbert': kbert_two_stage_collate_fn,
+	'masked_SSL_kroberta': kbert_two_stage_collate_fn
 }

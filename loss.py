@@ -168,10 +168,13 @@ loss_factory = {
     'causal': causal_inference_loss,
     'sentim': sentim_loss,
     'base_DA': sentim_loss,
+    'base_DA_roberta': sentim_loss,
     'kbert_two_stage_sentim': sentim_loss,
     'kbert_two_stage_da': sentim_loss,
     'DANN_kbert': DANN_loss,
+    'DANN_kroberta': DANN_loss,
     'SSL_kbert': SSL_kbert_loss,
     'SSL_kbert_DANN': SSL_kbert_DANN_loss,
-    'masked_SSL_kbert': SSL_kbert_loss
+    'masked_SSL_kbert': SSL_kbert_loss,
+    'masked_SSL_kroberta': SSL_kbert_loss,
 }
