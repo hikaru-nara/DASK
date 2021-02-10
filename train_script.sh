@@ -30,25 +30,7 @@
 #--pooling max \
 # # causal
 # --pretrained_model_path ./models/pytorch-bert-uncased/pytorch_model.bin \
-    
-# CUDA_VISIBLE_DEVICES='0,1,10,11' python3 -u train.py \
-#     --config_path ./models/google_config.json \
-#     --vocab_path ./models/pytorch-bert-uncased/vocab.txt \
-#     --pretrained_model_path ./models/pytorch-bert-uncased/pytorch_model.bin \
-#     --dataset imdb \
-#     --model_name causal \
-#     --task causal_inference \
-#     --epochs_num 100 --batch_size 32 \
-#     --kg_path data/imdb_sub_conceptnet.spo \
-#     --log_dir log/causal_0926_2 \
-#     --num_gpus 4 \
-#     --seq_length 256 \
-#     --optimizer adam \
-#     --learning_rate 2e-5 \
-#     --num_workers 16 \
-#     --init normal \
-#     --freeze_bert \
-#     --print_freq 50
+ 
 
 
     # --pretrained_model_path ./models/multi_cased_L-12_H-768_A-12/bert_model.ckpt \
@@ -56,14 +38,13 @@
     # --vocab_path ./models/multi_cased_L-12_H-768_A-12/vocab.txt \
 
 # SSL DA
-# CUDA_VISIBLE_DEVICES='0,1,6' python3 train.py \
-#     --source bdek.books \
-#     --target bdek.electronics \
+# CUDA_VISIBLE_DEVICES='0,5,6,7' python3 train.py \
+#     --source airlines \
+#     --target bdek.books \
 #     --model_name SSL_kbert \
 #     --task DA_SSL \
-#     --epochs_num 10 --batch_size 24 \
-#     --kg_path data/results/electronics_unlabeled_org \
-#     --log_dir log/BE_SSL_update_P_0117 \
+#     --epochs_num 10 --batch_size 32 \
+#     --log_dir log/AB_SSL_0204_l0.25w0.1_nomask \
 #     --seq_length 256 \
 #     --learning_rate 2e-5 \
 #     --pooling first \
@@ -72,52 +53,176 @@
 #     --pretrained_model_path ./models/pytorch-bert-uncased/pytorch_model.bin \
 #     --min_occur 10 \
 #     --num_pivots 500 \
-#     --ssl_warmup 0.5 \
-#     --lambda_ssl 0.01 \
-#     --update_rate 0.01 \
-#     --update \
-#     --use_kg 
+#     --ssl_warmup 0.1 \
+#     --lambda_ssl 0.25 
     # --config_path ./models/google_config.json \
     # --vocab_path ./models/pytorch-bert-uncased/vocab.txt \
 #Pbert
-# CUDA_VISIBLE_DEVICES='4,5,6,15' python train.py \
-#     --source bdek.books \
-#     --target bdek.electronics \
-#     --model_name base_DA \
+# CUDA_VISIBLE_DEVICES='0,1,2,3,4,5,6,7' python train.py \
+#     --source bdek.electronics \
+#     --target bdek.books \
+#     --model_name base_DA_roberta \
 #     --task domain_adaptation \
-#     --epochs_num 10 --batch_size 32 \
-#     --kg_path data/results/electronics_unlabeled_org \
-#     --log_dir log/BE_Pbert_0119_balanced \
+#     --epochs_num 10 --batch_size 64 \
+#     --kg_path data/results/eb_org \
+#     --log_dir log/EB_Pbert_r_0209_b9 \
 #     --seq_length 256 \
 #     --learning_rate 2e-5 \
 #     --pooling first \
 #     --num_workers 24 \
 #     --print_freq 100 \
+#     --pretrained_model_path ./models/pytorch-roberta-base/pytorch_model.bin \
+#     --min_occur 10 \
+#     --balanced_interval 9 \
+#     --filter conf \
+#     --filter_conf 0.40
+
+#baseDA
+# CUDA_VISIBLE_DEVICES='6' python train.py \
+#     --source bdek.electronics \
+#     --target bdek.books \
+#     --model_name base_DA \
+#     --task domain_adaptation \
+#     --epochs_num 10 --batch_size 32 \
+#     --log_dir log/EB_base_0127 \
+#     --seq_length 256 \
+#     --learning_rate 2e-5 \
+#     --pooling first \
+#     --num_workers 24 \
+#     --print_freq 100 \
+#     --pretrained_model_path ./models/pytorch-bert-uncased/pytorch_model.bin 
+
+
+# baseDA roberta
+# CUDA_VISIBLE_DEVICES='1,3,4,5' python train.py \
+#     --source bdek.books \
+#     --target bdek.kitchen \
+#     --model_name base_DA_roberta \
+#     --task domain_adaptation \
+#     --epochs_num 10 --batch_size 64 \
+#     --log_dir log/DE_base_r_0209 \
+#     --seq_length 256 \
+#     --learning_rate 2e-6 \
+#     --pooling first \
+#     --num_workers 24 \
+#     --print_freq 100 \
+#     --pretrained_model_path ./models/pytorch-roberta-base/pytorch_model.bin \
+#     --weight_decay 0.0001 \
+#     --warmup 0.2
+
+# DANN bert
+# CUDA_VISIBLE_DEVICES='6' python train.py \
+#     --source bdek.kitchen \
+#     --target airlines\
+#     --model_name DANN_kbert \
+#     --task domain_adaptation \
+#     --epochs_num 10 --batch_size 32 \
+#     --log_dir log/KA_DANN_0131_wd1e-2_g0.25 \
+#     --seq_length 256 \
+#     --learning_rate 2e-5 \
+#     --pooling first \
+#     --num_workers 32 \
+#     --print_freq 100 \
 #     --pretrained_model_path ./models/pytorch-bert-uncased/pytorch_model.bin \
 #     --min_occur 10 \
-#     --use_kg \
-#     --balanced_interval 7
+#     --gamma 0.25 \
+#     --weight_decay 0.01
+
+# DANN roberta
+# CUDA_VISIBLE_DEVICES='0,1,2,3,4,5,6,7' python train.py \
+#     --source bdek.electronics \
+#     --target bdek.dvd \
+#     --model_name DANN_kroberta \
+#     --task domain_adaptation \
+#     --epochs_num 10 --batch_size 64 \
+#     --log_dir log/ED_DANN_r_0209_g0.25 \
+#     --seq_length 256 \
+#     --learning_rate 2e-5 \
+#     --pooling first \
+#     --num_workers 32 \
+#     --print_freq 100 \
+#     --pretrained_model_path ./models/pytorch-roberta-base/pytorch_model.bin \
+#     --min_occur 10 \
+#     --gamma 0.25 \
+#     --weight_decay 0.0001
+
 
 # Pbert + SSL
-CUDA_VISIBLE_DEVICES='6,7,2' python train.py \
-    --source bdek.books \
-    --target bdek.electronics \
-    --model_name SSL_kbert \
-    --task DA_SSL \
-    --epochs_num 100 --batch_size 16 \
-    --kg_path data/results/electronics_unlabeled_org \
-    --log_dir log/BE_PbertSSL_0120_balanced \
+# CUDA_VISIBLE_DEVICES='0,5,6,7' python train.py \
+#     --source airlines \
+#     --target bdek.books \
+#     --model_name SSL_kbert \
+#     --task DA_SSL \
+#     --epochs_num 10 --batch_size 64 \
+#     --kg_path data/results/ab_org \
+#     --log_dir log/BE_PbertSSL_0203_nou_b9_l0.25w0.1_wd1e-4 \
+#     --seq_length 256 \
+#     --learning_rate 2e-5 \
+#     --pooling first \
+#     --num_workers 32 \
+#     --print_freq 100 \
+#     --pretrained_model_path ./models/pytorch-bert-uncased/pytorch_model.bin \
+#     --min_occur 10 \
+#     --ssl_warmup 0.1 \
+#     --lambda_ssl 0.25 \
+#     --use_kg \
+#     --balanced_interval 9 \
+#     --filter_conf 0.1 \
+#     --filter conf 
+
+# masked ssl pbert
+# CUDA_VISIBLE_DEVICES='0,1,2,3,4,5,6,7' python train.py \
+#     --source airlines \
+#     --target bdek.dvd \
+#     --model_name masked_SSL_kbert \
+#     --task masked_DA_SSL \
+#     --epochs_num 10 --batch_size 64 \
+#     --kg_path data/results/ad_org \
+#     --log_dir log/AD_PbertSSL_0205_b9_u2e-4_l0.2w0.1_wd2e-4 \
+#     --seq_length 256 \
+#     --learning_rate 2e-5 \
+#     --pooling first \
+#     --num_workers 32 \
+#     --print_freq 100 \
+#     --pretrained_model_path ./models/pytorch-bert-uncased/pytorch_model.bin \
+#     --min_occur 10 \
+#     --ssl_warmup 0.1 \
+#     --lambda_ssl 0.2 \
+#     --use_kg \
+#     --balanced_interval 9 \
+#     --filter_conf 0.18 \
+#     --filter conf \
+#     --weight_decay 0.0002 \
+#     --update \
+#     --update_rate 0.0002 \
+#     --update_steps 10
+
+# masked ssl proberta
+CUDA_VISIBLE_DEVICES='0,1,2,3,4,5,6,7' python train.py \
+    --source bdek.electronics \
+    --target bdek.books \
+    --model_name masked_SSL_kroberta \
+    --task masked_DA_SSL \
+    --epochs_num 10 --batch_size 64 \
+    --kg_path data/results/eb_org \
+    --log_dir log/EB_PbertSSL_r_0210_b9_nu_l0.1w0.1_wd1e-4_f0.40_lr2e-5 \
     --seq_length 256 \
     --learning_rate 2e-5 \
     --pooling first \
-    --num_workers 24 \
+    --num_workers 32 \
     --print_freq 100 \
-    --pretrained_model_path ./models/pytorch-bert-uncased/pytorch_model.bin \
+    --pretrained_model_path ./models/pytorch-roberta-base/pytorch_model.bin \
     --min_occur 10 \
-    --ssl_warmup 0.5 \
-    --lambda_ssl 0.01 \
+    --ssl_warmup 0.1 \
+    --lambda_ssl 0.1 \
     --use_kg \
-    --balanced_interval 10
+    --balanced_interval 9 \
+    --filter_conf 0.40 \
+    --filter conf \
+    --weight_decay 0.0001 \
+    --update \
+    --update_rate 0.0002 \
+    --update_steps 10
 
 #Pbert eval
 # CUDA_VISIBLE_DEVICES='0,1,2' python3 evaluate.py \

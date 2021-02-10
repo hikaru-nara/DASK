@@ -80,7 +80,7 @@ class MemoryBank(object):
 			
 			# print('commented')
 			sentiment_score = {}
-			for word in common_words:
+			for word in source_word_freq.keys():
 				if word in word_count.keys() and word_count[word]>self.min_occurrence:
 					sentiment_score[word] = float(word_sentiment_count[word])/float(word_count[word])
 				else:

@@ -395,9 +395,11 @@ class DA_Dataset(torch.utils.data.Dataset):
         labeled_tgt = self.target_data['labeled']
 
         len_dev = len(labeled_src['text'])
+
         # inds = list(range(len_dev))
         # random.shuffle(inds)
         # labeled_src = {k:[labeled_src[k][i] for i in inds] for k in labeled_src.keys()}
+
         dev_data = {k:labeled_src[k][len_dev//5*4:] for k in labeled_src.keys()}
         train_labeled = {k:labeled_src[k][:len_dev//5*4] for k in labeled_src.keys()}
         return DA_train_dataset(train_labeled, unlabeled, self.max_seq_length, self.kg, self.model_name), \

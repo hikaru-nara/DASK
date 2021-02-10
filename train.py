@@ -333,7 +333,7 @@ if __name__=='__main__':
 	best_dev_acc = 0
 	best_test_acc = 0
 	for epoch in range(args.epochs_num):
-		if args.task == 'DA_SSL' and args.update:
+		if args.update:
 			filename = os.path.join(args.log_dir, 'pivot@{}.txt'.format(epoch))
 			with open(filename,'w') as f:
 				for p in memory_bank.pivots:
