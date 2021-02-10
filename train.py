@@ -127,7 +127,7 @@ if __name__=='__main__':
 	parser.add_argument('--pos_require_knowledge', type=str, help='the part of speech that \
 		requires kg to add knowledge, choose a subset from [ADJ, ADP, ADV, CONJ, DET, NOUN, \
 		NUM, PRT, PRON, VERB, ., X], split with "," e.g. ADJ,ADP,ADV', default='ADJ,ADV,NOUN')
-	parser.add_argument('--use_pivot_kg', action='store_true')
+	parser.add_argument('--dont_use_pivot_kg', action='store_true', help="don't use pivots when injecting knowledge, only applicable to DA_dataset for ablation study")
 	parser.add_argument('--num_pivots', type=int, default=500)
 	parser.add_argument('--min_occur', type=int, default=10)
 	parser.add_argument('--update_steps', type=int, default=10)
@@ -175,10 +175,7 @@ if __name__=='__main__':
 	# print('train_dataset loaded')
 	# eval_dataset = bdek_eval_dataset(train_dataset.evaluation_data)
 	args.kg_path = args.kg_path.split(',\n\t')
-	if args.use_pivot_kg:
-		args.vocab_require_knowledge = load_pivots(args)
-	else:
-		args.vocab_require_knowledge = None
+	args.vocab_require_knowledge = None
 	if args.task == 'domain_adaptation' or args.task == 'DA_SSL' or args.task == 'masked_DA_SSL':
 		source = args.source
 		if '.' in source:
@@ -200,7 +197,10 @@ if __name__=='__main__':
 			target_reader = reader_factory[args.target]('target')
 		
 		# if args.task == 'DA_SSL':
-		memory_bank = MemoryBank(args)
+		if args.dont_use_pivot_kg:
+			memory_bank = None
+		else:
+			memory_bank = MemoryBank(args)
 		dataset = dataset_factory[args.task](args, source_reader, target_reader, graph_path=args.kg_path, memory_bank=memory_bank)
 		# else:
 		# 	dataset = dataset_factory[args.task](args, source_reader, target_reader, graph_path=args.kg_path)

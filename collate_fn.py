@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 # import transformers
-
+from uer.utils.constants import *
 from transformers import BertTokenizer
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 
@@ -17,7 +17,7 @@ def kbert_two_stage_collate_fn(batch_data):
 		tokens_org = batch_data[i]['tokens_org']
 		pad_num = max_length-len(tokens_org)
 		if pad_num>0:
-			tokens_org.extend([0 for _ in range(pad_num)])
+			tokens_org.extend([PAD_ID for _ in range(pad_num)])
 			if 'ssl_label' in batch_data[i]:
 				batch_data[i]['ssl_label'].extend([-1 for _ in range(pad_num)])
 		mask_org = [1 if tokenid!=0 else 0 for tokenid in tokens_org]

@@ -26,7 +26,7 @@ class MemoryBank(object):
 		self.conf_threshold = args.confidence_threshold
 		self.update_times = {'source':0, 'target':0}
 		self.total_times = {'source':0, 'target':0}
-		self.redo = True
+		self.redo = False
 		self.valid_tags = ['NOUN','ADJ','ADV','VERB']
 		if '.' in self.source:
 			datadir = os.path.join('amazon-review-old',self.source.split('.')[-1])
@@ -115,7 +115,8 @@ class MemoryBank(object):
 		for p in self.pivots:
 			if not p in self.pivot2token:
 				self.pivot2token[p] = self.tokenizer.encode(p, add_special_tokens=False)
-		# assert 'recommendations' in self.pivot2token
+		# self.pivots = set(self.pivots)
+		# assert 'originally' in self.pivot2token
 
 	def update(self, sentences, pred_labels, pred_confidence, source_or_target='source', step=False):
 		'''

@@ -5,6 +5,7 @@ import random
 # from gensim.corpora import Dictionary as gensim_dico
 from brain.knowgraph import KnowledgeGraph
 # from brain.config import *
+from uer.utils import *
 from utils.utils import standardize, is_in
 import operator
 import re
@@ -16,8 +17,8 @@ from nltk.tokenize import sent_tokenize, word_tokenize
 import math
 import torch
 from numpy.random import default_rng
-from uer.utils.constants import *
 import time
+
 # from augmentor import augment_factory
 
 nltk.download('averaged_perceptron_tagger')
@@ -133,12 +134,12 @@ def bert_preprocess(datum, max_seq_length, tokenizer):
     # print(datum)
     # tokens = tokenizer.encode('[CLS]' + datum['text'] + '[SEP]', max_length=max_seq_length)
     tokens = tokenizer.encode(datum['text'], max_length=max_seq_length, add_special_tokens=True, truncation=True)
-    tokens.extend([0 for _ in range(max_seq_length-len(tokens))])
+    tokens.extend([PAD_ID for _ in range(max_seq_length-len(tokens))])
     # if len(tokens) > max_seq_length:
     #     tokens = tokens[:max_seq_length - 1] + [tokens[-1]]
 
     datum['tokens'] = np.array(tokens)
-    datum['mask'] = np.array([1 if t!=0 else 0 for t in datum['tokens']])
+    datum['mask'] = np.array([1 if t!=PAD_ID else 0 for t in datum['tokens']])
     # if 'aug_text' in datum.keys():
     #     aug_tokens = tokenizer.encode(datum['aug_text'], max_length=max_seq_length, add_special_tokens=True, truncation=True)
     #     # if len(tokens) > max_seq_length:
@@ -188,7 +189,7 @@ def SSL_preprocess(datum, max_seq_length, memory_bank, tokenizer):
     # add [MASK] tag
     for i, l in enumerate(ssl_label):
         if l > 0:
-            tokens[i] = tokenizer.encode('[MASK]')[1] # [101, 103, 102]
+            tokens[i] = tokenizer.encode(MASK_TOKEN)[1] # [101, 103, 102] or [0,50264,2]
     datum['tokens_org'] = tokens
     datum['ssl_label'] = ssl_label
     return datum
@@ -208,7 +209,7 @@ def Masked_SSL_preprocess(datum, max_seq_length, memory_bank, tokenizer):
     # add [MASK] tag
     for i, l in enumerate(ssl_label):
         if l > 0:
-            tokens[i] = tokenizer.encode('[MASK]')[1] # [101, 103, 102]
+            tokens[i] = tokenizer.encode(MASK_TOKEN)[1] # [101, 103, 102] or [0,50264,2]
     datum['tokens_mask'] = np.array(tokens)
     datum['ssl_label'] = np.array(ssl_label)
     datum['src_pos'] = np.array(datum['src_pos'])
@@ -318,13 +319,13 @@ class DA_train_dataset(torch.utils.data.Dataset):
         # self.augmenter = augmenter
 
     def __len__(self):
-        return max(self.len_labeled, self.len_unlabeled)
-        # return self.len_labeled
+        # return max(self.len_labeled, self.len_unlabeled)
+        return self.len_labeled
 
     def __getitem__(self, i):
         # assert self.len_labeled<self.len_unlabeled
-        l_ind = i*self.len_labeled//self.len_unlabeled
-        # l_ind = i
+        # l_ind = i*self.len_labeled//self.len_unlabeled
+        l_ind = i
 
         labeled_datum = {k: self.labeled_data[k][l_ind] for k in self.labeled_data.keys()}
 
@@ -394,9 +395,9 @@ class DA_Dataset(torch.utils.data.Dataset):
         labeled_tgt = self.target_data['labeled']
 
         len_dev = len(labeled_src['text'])
-        inds = list(range(len_dev))
-        random.shuffle(inds)
-        labeled_src = {k:[labeled_src[k][i] for i in inds] for k in labeled_src.keys()}
+        # inds = list(range(len_dev))
+        # random.shuffle(inds)
+        # labeled_src = {k:[labeled_src[k][i] for i in inds] for k in labeled_src.keys()}
         dev_data = {k:labeled_src[k][len_dev//5*4:] for k in labeled_src.keys()}
         train_labeled = {k:labeled_src[k][:len_dev//5*4] for k in labeled_src.keys()}
         return DA_train_dataset(train_labeled, unlabeled, self.max_seq_length, self.kg, self.model_name), \
@@ -673,7 +674,6 @@ dataset_factory = {'causal_inference': Causal_Dataset,
 if __name__ == '__main__':
     from utils.readers import reader_factory
     # from utils.vocab import Vocab
-    from utils.constants import *
     from collate_fn import collate_factory_train, collate_factory_eval
     from memory_bank import MemoryBank
     import argparse
@@ -685,7 +685,7 @@ if __name__ == '__main__':
     parser.add_argument('--augmenter', default='synonym_substitution')
     parser.add_argument('--aug_rate', default=0.7, help='aug_rate for synonym_substitution')
     parser.add_argument('--use_kg', action='store_true')
-    parser.add_argument('--model', default='base_DA', type=str)
+    parser.add_argument('--model_name', default='base_DA', type=str)
     parser.add_argument('--pos_require_knowledge', type=str, help='the part of speech that \
         requires kg to add knowledge, choose a subset from [ADJ, ADP, ADV, CONJ, DET, NOUN, \
         NUM, PRT, PRON, VERB, ., X], split with "," e.g. ADJ,ADP,ADV', default='ADJ,ADV,NOUN')
@@ -715,6 +715,8 @@ if __name__ == '__main__':
 
     args.pollution_rate = [0.7,0.9]
 
+    
+    print(PAD_ID)
     if args.task == 'domain_adaptation' or args.task=='DA_SSL' or args.task=='masked_DA_SSL':
         source = args.source
         if '.' in source:
@@ -762,7 +764,7 @@ if __name__ == '__main__':
     # vocab = Vocab()
     # vocab.load(args.vocab_path)
     # args.vocab = vocab
-    exit()
+    # exit()
     # source_reader = reader_factory['bdek']('books','source')
     # target_reader = reader_factory['bdek']('kitchen','target')
 
@@ -772,8 +774,8 @@ if __name__ == '__main__':
     # data_reader = reader_factory['imdb']([0.9, 0.7], False)
     # dataset = dataset_factory['causal_inference'](args, data_reader, graph_path=['data/imdb_sub_conceptnet.spo'])
     # train_dataset, dev_dataset, eval_dataset = dataset.split()
-    collate_fn_eval = collate_factory_eval[args.model]
-    collate_fn_train = collate_factory_train[args.model]
+    collate_fn_eval = collate_factory_eval[args.model_name]
+    collate_fn_train = collate_factory_train[args.model_name]
     # train_sampler = torch.utils.data.RandomSampler(train_dataset)
     # dev_sampler = torch.utils.data.RandomSampler(dev_dataset)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, num_workers=0, collate_fn=collate_fn_train)
@@ -785,51 +787,23 @@ if __name__ == '__main__':
     # print(tokens)
     # nltk.download('punkt')
     from transformers import BertTokenizer
-    t = BertTokenizer.from_pretrained('bert-base-uncased')
-    for i, (labeled_batch,src_unlabeled_batch,_) in enumerate(train_loader):
-        print(labeled_batch.keys())
-        print(i)
-        print(src_unlabeled_batch['tokens'][0])
-        print(src_unlabeled_batch['tokens_mask'][0])
-        print(src_unlabeled_batch['ssl_label'][0])
-        # print(labeled_batch['mask'][0])
-        print(src_unlabeled_batch['pos'][0])
-        # # print(torch.all(labeled_batch['vm']==1))
-        # # print(labeled_batch['tokens_kg'][0])
-        # # print(labeled_batch['pos'][0])
-        print(src_unlabeled_batch['vm'][0][-16:,-16:])
-        print(src_unlabeled_batch['vm_ssl'][0][-16:,-16:])
+    from transformers import RobertaTokenizer
+    # t = BertTokenizer.from_pretrained('bert-base-uncased')
+    t = RobertaTokenizer.from_pretrained('roberta-base')
+    for i, (labeled_batch,src_unlabeled_batch) in enumerate(train_loader):
 
-        # # print(labeled_batch['text'][0])
-        # # print(labeled_batch['label'])
-        # print(t.decode(labeled_batch['tokens'][0]))
-        # print(labeled_batch['text'][0])
-        # # print(labeled_batch['ssl_label'][0])
-        # # ssl_label = (labeled_batch['ssl_label'][0]!=-1) * labeled_batch['ssl_label'][0]
-        # # print(t.decode(ssl_label))
         
-        # print(t.decode(labeled_batch['tokens_kg'][0]))
-        # print(labeled_batch['tokens'][0])
-        # print(labeled_batch['pos'][0])
-        # print(labeled_batch['vm'][0][:16,:16])
-        # print(labeled_batch['text'][0])
-        # print(t.decode(labeled_batch['tokens'][0]))
-        # print(labeled_batch['aug_tokens'][0])
-        # print(unlabeled_src_batch['domain'])
-        # print(unlabeled_tgt_batch['domain'])
-        # print(source_batch['domain'])
-        # print(target_batch['domain'])
-        # print(labeled_batch['aug_tokens'][0])
-        # print(labeled_batch['label'][0])
-        # assert labeled_batch['text'][0]!=labeled_batch['aug_text'][0]
-        
-        # print(unlabeled_src_batch['text'][0])
-        # print(unlabeled_src_batch['aug_text'][0])
-        # print(unlabeled_src_batch['domain'][0])
-        # print(unlabeled_batch['tokens'][0])
-        # print(unlabeled_batch['aug_tokens'][0])
-        # assert unlabeled_batch['text'][0]!=unlabeled_batch['aug_text'][0]
-        # print(labeled_batch['mask'])
-        # print(labeled_batch['label'][0])
+        # print('unlabeled')
+        # print(src_unlabeled_batch['text'][0])
+        # print(t.decode(src_unlabeled_batch['tokens'][0]))
+        # print(src_unlabeled_batch['vm'][0][-16:,-16:])
+        # print(src_unlabeled_batch['pos'][0])
         if i==0:
-            break
+            print(labeled_batch.keys())
+            print(i)
+            print('labeled')
+            print(labeled_batch['text'][0])
+            print(t.decode(labeled_batch['tokens'][0][90:107]))
+            print(labeled_batch['vm'][0][90:107,90:107])
+            print(labeled_batch['pos'][0])
+            # break

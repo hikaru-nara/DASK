@@ -5,13 +5,13 @@ KnowledgeGraph
 import os
 import sys
 sys.path.append('/rscratch/tianli/DA_NLP/graph-causal-domain-adaptation')
-import brain.config as config
+from brain.config import MAX_ENTITIES
 # import fairseq.data.encoder.gpt2_bpe as gpt2_bpe
 # import wrapper_tokenizer as wt
 import numpy as np
 from utils.utils import standardize
-from uer.utils.constants import *
-from transformers import BertTokenizer
+from uer.utils import *
+from transformers import BertTokenizer, RobertaTokenizer
 import re
 import nltk
 from nltk.tokenize import word_tokenize
@@ -24,7 +24,7 @@ class KnowledgeGraph(object):
 
     def __init__(self, args, spo_files, use_custom_vocab=False, vocab=None, predicate=True, memory_bank=None):
         self.predicate = predicate
-        self.spo_file_paths = [config.KGS.get(f, f) for f in spo_files]
+        self.spo_file_paths = spo_files
         # self.lookup_table = {}
         graphfilter = filter_factory[args.filter](args)
         if graphfilter is not None:
@@ -32,21 +32,28 @@ class KnowledgeGraph(object):
         else:
             print('warning!!no filter')
         self.lookup_table = self._create_lookup_table()
-        self.segment_vocab = list(self.lookup_table.keys()) + config.NEVER_SPLIT_TAG
+        self.segment_vocab = list(self.lookup_table.keys()) + NEVER_SPLIT_TAG
+        self.model_name = 'roberta'  if 'roberta' in args.model_name else 'bert'
+
         # if use_custom_vocab:
-        self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True)
+        if 'roberta' in args.model_name:
+            self.tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
+        else:
+            self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+
+        # self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True)
         # else:
         #     self.tokenizer = wt.gpt2_tokenizer()
-        self.special_tags = set(config.NEVER_SPLIT_TAG)
+        self.special_tags = set(NEVER_SPLIT_TAG)
         self.add_kg_pos = args.pos_require_knowledge.split(',')
         self.memory_bank = memory_bank
         if args.vocab_require_knowledge is not None:
             self.add_kg_vocab = args.vocab_require_knowledge['word']
         else:
             self.add_kg_vocab = None
-        for pos in self.add_kg_pos:
-            assert pos in config.POS_SET
-        print('max entities', config.MAX_ENTITIES)
+        # for pos in self.add_kg_pos:
+        #     assert pos in config.POS_SET
+        print('max entities', MAX_ENTITIES)
 
     def _create_lookup_table(self):
         # lookup_table = {}
@@ -121,20 +128,242 @@ class KnowledgeGraph(object):
                     #     lookup_table[subj] = set([value])
         return lookup_table
 
-    # def add_knowledge_with_vm_new(self, sentence, max_entities=config.MAX_ENTITIES, add_pad=True, max_length=256, add_special_tokens=True):
+    def add_knowledge_with_vm(self, sentence, max_entities=MAX_ENTITIES, add_pad=True, max_length=256, 
+                add_special_tokens=True, return_ssl_mask=False):
+        if self.model_name == 'bert':
+            return self.add_knowledge_with_vm_bert(sentence, MAX_ENTITIES, add_pad, max_length, add_special_tokens, return_ssl_mask)
+
+        elif self.model_name == 'roberta':
+            return self.add_knowledge_with_vm_roberta(sentence, MAX_ENTITIES, add_pad, max_length, add_special_tokens, return_ssl_mask)
         
-
-
-    def add_knowledge_with_vm(self, sentence, max_entities=config.MAX_ENTITIES, add_pad=True, max_length=256, add_special_tokens=True,
+    def add_knowledge_with_vm_roberta(self, sentence, max_entities=MAX_ENTITIES, add_pad=True, max_length=256, add_special_tokens=True,
             return_ssl_mask=False):
         '''
         need to tune max_length on bdek dataset; draw the histgram of length and decide a threshold
         '''
-        # 加的东西太多-》
-        # 冠词、介词不要
-        # 形容词、副词和常规动词，和少量名次 加 kg
-        # 加很多个节点，做embedding的平均； bert pretrained embedding，先存起来；
-        # multi stage
+        
+        sent_tree = []
+        pos_idx_tree = []
+        abs_idx_tree = []
+        pos_idx = -1
+        abs_idx = -1
+        abs_idx_src = []
+        
+        # split_sent = sentence.split(' ')
+        split_sent = word_tokenize(sentence)
+
+        # special process for roberta...because of Roberta BPE
+        i = 0 
+        word_idx = 0
+       
+        if split_sent[word_idx]=='``' or split_sent[word_idx]=="''":
+            split_sent[word_idx] = '"'
+        word_len = len(split_sent[word_idx])
+        new_split_sent = []
+        len_sentence = len(sentence)
+        len_tokens = len(split_sent)
+        while True:
+            if word_idx<len_tokens and split_sent[word_idx] == '"':
+                if sentence[i:i+1] == '"':
+                    i += 1
+                elif sentence[i:i+2] == '``':
+                    i += 2
+                elif sentence[i:i+2] == "''":
+                    i += 2
+                word_idx += 1
+                if word_idx>=len_tokens:
+                    word_len = 0
+                else:
+                    if split_sent[word_idx]=='``' or split_sent[word_idx]=="''":
+                        split_sent[word_idx] = '"'
+                    word_len = len(split_sent[word_idx])
+            elif word_idx<len_tokens and sentence[i:i+word_len] == split_sent[word_idx]:
+                if i>0 and sentence[i-1] == ' ':
+                    new_split_sent.append(' '+split_sent[word_idx])
+                else:
+                    new_split_sent.append(split_sent[word_idx])
+                i = i + word_len
+                word_idx += 1
+                
+                if word_idx>=len_tokens:
+                    word_len = 0
+                else:
+                    if split_sent[word_idx]=='``' or split_sent[word_idx]=="''":
+                        split_sent[word_idx] = '"'
+                    word_len = len(split_sent[word_idx])
+            elif sentence[i]!=' ': # '' , . \n 
+                new_split_sent.append(sentence[i])
+                i = i + 1
+            else:
+                i = i + 1
+            if i>=len_sentence:
+                break
+        
+        # print('split sent')
+        # print(split_sent)
+        split_sent = new_split_sent
+        # print('new')
+        # print(new_split_sent)
+        # print('sentence')
+        # print(sentence)
+        assert word_idx == len_tokens
+        if add_special_tokens:
+            # pos_tag = [(CLS_TOKEN, 'X')] + pos_tag
+            split_sent = [CLS_TOKEN] + split_sent
+        # pos_tag = nltk.pos_tag(split_sent)
+        # split_sent = [standardize(token) for token in split_sent]
+
+        if self.memory_bank is not None:
+            self.add_kg_vocab = self.memory_bank.pivots
+        for idx, token in enumerate(split_sent):
+            if self.add_kg_vocab is None:
+
+                entities = list(self.lookup_table.get(token.strip(), []))[:max_entities]
+            else:
+                if token.strip() in self.add_kg_vocab:
+                    entities = list(self.lookup_table.get(token.strip(), []))[:max_entities]
+                else:
+                    entities = []
+                # print(len(entities))
+            # print(token, entities)
+            token = self.tokenizer.encode(token, add_special_tokens=False)
+            if len(token)==0:
+                continue
+            entities = [' '.join(ent.split('_')) for ent in entities]
+            entities = [self.tokenizer.encode(' '+ent, add_special_tokens=False) for ent in entities]
+            # print(token)
+            # print(entities)
+            sent_tree.append((token, entities))
+            # token_pos_idx = [pos_idx+1]
+            # token_abs_idx = [abs_idx+1]
+            if not isinstance(token, list) and token in self.special_tags:
+                token_pos_idx = [pos_idx+1]
+                token_abs_idx = [abs_idx+1]
+            else:
+                # token = token.strip().split(' ')
+                # token = self.tokenizer.encode(token.strip())
+                token_pos_idx = [pos_idx+i for i in range(1, len(token)+1)]
+                token_abs_idx = [abs_idx+i for i in range(1, len(token)+1)]
+            # if yesprint:
+            # print('add kg')
+            # print('[{}]'.format(tmp), token, token_abs_idx)
+            abs_idx = token_abs_idx[-1]
+
+            entities_pos_idx = []
+            entities_abs_idx = []
+            for ent in entities:
+                # ent = ent.split('_')
+                ent_pos_idx = [token_pos_idx[-1] + i for i in range(1, len(ent)+1)]
+                entities_pos_idx.append(ent_pos_idx)
+                ent_abs_idx = [abs_idx + i for i in range(1, len(ent)+1)]
+                abs_idx = ent_abs_idx[-1]
+                entities_abs_idx.append(ent_abs_idx)
+
+            pos_idx_tree.append((token_pos_idx, entities_pos_idx))
+            pos_idx = token_pos_idx[-1]
+            abs_idx_tree.append((token_abs_idx, entities_abs_idx))
+            abs_idx_src += token_abs_idx
+
+        # Get know_sent and pos
+        know_sent = []
+        pos = []
+        seg = []
+        # ssl_mask_pos = []
+        for i in range(len(sent_tree)):
+            word = sent_tree[i][0]
+            if not isinstance(word, list) and word in self.special_tags:
+                know_sent += [word]
+                seg += [0] # 1？？
+                # ssl_mask_pos += [1]
+            else:
+                # add_word = word.strip().split(' ')
+                # add_word = self.tokenizer.encode(word.strip())
+                add_word = list(word)
+                know_sent += add_word 
+                seg += [0] * len(add_word) # 1？？
+                # ssl_mask_pos += [1] * len(add_word)
+            pos += pos_idx_tree[i][0]
+            
+            for j in range(len(sent_tree[i][1])):
+                add_word = sent_tree[i][1][j]
+                # add_word = add_word.strip().split(' ')
+                # add_word = self.tokenizer.encode(word.strip())
+                know_sent += add_word
+                seg += [1] * len(add_word)
+                pos += list(pos_idx_tree[i][1][j])
+                # ssl_mask_pos += [0] * len(add_word)
+
+        
+
+        token_num = len(know_sent)
+
+        # Calculate visible matrix
+        visible_matrix = np.zeros((token_num, token_num))
+        ssl_mask = np.zeros((token_num, token_num))
+        for item in abs_idx_tree:
+            src_ids = item[0]
+            for id in src_ids:
+                visible_abs_idx = abs_idx_src + [idx for ent in item[1] for idx in ent]
+                visible_matrix[id, visible_abs_idx] = 1
+                ssl_mask[id, abs_idx_src] = 1
+            for ent in item[1]:
+                for id in ent:
+                    visible_abs_idx = ent + src_ids
+                    visible_matrix[id, visible_abs_idx] = 1
+
+        # calculate ssl_mask
+        # ssl_mask = np.zeros((token_num, token_num))
+        # for item in 
+
+        src_length = len(know_sent)
+
+        if len(know_sent) < max_length:
+            pad_num = max_length - src_length
+            know_sent += [PAD_ID] * pad_num
+            seg += [0] * pad_num
+            pos += list(range(src_length, max_length))
+            visible_matrix = np.pad(visible_matrix, ((0, pad_num), (0, pad_num)), 'constant')  # pad 0
+            ssl_mask = np.pad(ssl_mask, ((0, pad_num), (0, pad_num)), 'constant')
+        else:
+            know_sent = know_sent[:max_length]
+            seg = seg[:max_length]
+            pos = pos[:max_length]
+            visible_matrix = visible_matrix[:max_length, :max_length]
+            ssl_mask = ssl_mask[:max_length, :max_length]
+        
+        # if len(know_sent) < max_length - 2:
+        #     pad_num = max_length - src_length
+        #     know_sent = [CLS_ID] + know_sent + [SEP_ID]
+        #     know_sent += [PAD_ID] * (pad_num-2)
+        #     pos = [0] + [p+1 for p in pos]
+        #     pos += [max_length - 1] * (pad_num-1)
+        #     visible_matrix = np.pad(visible_matrix, ((1,1),(1,1)), 'constant')
+        #     visible_matrix[0,0] = 1 
+        #     visible_matrix[-1,-1] = 1
+        #     visible_matrix = np.pad(visible_matrix, ((0, pad_num-2), (0, pad_num-2)), 'constant')  # pad 0
+            
+        #     seg += [0] * pad_num
+        # else:
+        #     # if add_special_tokens:
+        #     #     know_sent = [CLS_ID] + know_sent[:max_src_length] + [SEP_ID]
+        #     know_sent = [CLS_ID] + know_sent[:max_length-2] + [SEP_ID]
+        #     seg = seg[:max_length-2]
+        #     pos = [0]+pos[:max_length-2]+[max_length-1]
+        #     visible_matrix = visible_matrix[:max_length-2, :max_length-2]
+        #     visible_matrix = np.pad(visible_matrix, ((1,1),(1,1)), 'constant')
+        #     visible_matrix[0,0] = 1 
+        #     visible_matrix[-1,-1] = 1
+        if return_ssl_mask:
+            return know_sent, pos, visible_matrix, ssl_mask, abs_idx_src
+        else:    
+            return know_sent, pos, visible_matrix, seg
+
+    def add_knowledge_with_vm_bert(self, sentence, max_entities=MAX_ENTITIES, add_pad=True, max_length=256, add_special_tokens=True,
+            return_ssl_mask=False):
+        '''
+        need to tune max_length on bdek dataset; draw the histgram of length and decide a threshold
+        '''
+        
         sent_tree = []
         pos_idx_tree = []
         abs_idx_tree = []
@@ -156,7 +385,8 @@ class KnowledgeGraph(object):
             # print(max_entities)
             # print(token, pos_tag[idx])
             # print(self.add_kg_pos)
-            self.add_kg_vocab = self.memory_bank.pivots
+            if self.memory_bank is not None:
+                self.add_kg_vocab = self.memory_bank.pivots
             if self.add_kg_vocab is None:
                 # if pos_tag[idx][1] in self.add_kg_pos and token != 'i':
                     # print('add knowledge')
@@ -307,7 +537,7 @@ class KnowledgeGraph(object):
             return know_sent, pos, visible_matrix, seg
 
 
-    def add_knowledge_with_vm_batch(self, sent_batch, max_entities=config.MAX_ENTITIES, add_pad=True, max_length=256):
+    def add_knowledge_with_vm_batch(self, sent_batch, max_entities=MAX_ENTITIES, add_pad=True, max_length=256):
         """
         input: sent_batch - list of sentences, e.g., ["abcd", "efgh"]
         return: know_sent_batch - list of sentences with entites embedding
