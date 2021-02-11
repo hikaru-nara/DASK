@@ -181,7 +181,7 @@ class causal_optimizer(object):
 #         self.optimizers['sc'].step()
 
 
-optimizer_factory ={
+optimizer_factory = {
     'causal': causal_optimizer,
     'sentim': da_optimizer,
     'base_DA': da_optimizer,
@@ -191,6 +191,7 @@ optimizer_factory ={
     'DANN_kbert': da_optimizer,
     'DANN_kroberta': da_optimizer,
     'SSL_kbert': da_optimizer,
+    'SSL_kroberta': da_optimizer,
     'SSL_kbert_DANN': da_optimizer,
     'masked_SSL_kbert': da_optimizer,
     'masked_SSL_kroberta': da_optimizer

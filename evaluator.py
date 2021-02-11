@@ -438,6 +438,7 @@ evaluator_factory = {
         'DANN_kbert': DANN_Evaluator,
         'DANN_kroberta': DANN_Evaluator,
         'SSL_kbert': SSL_kbert_Evaluator,
+        'SSL_kroberta': SSL_kbert_Evaluator,
         'SSL_kbert_DANN': SSL_kbert_Evaluator,
         'masked_SSL_kbert': SSL_kbert_Evaluator,
         'masked_SSL_kroberta': SSL_kbert_Evaluator

@@ -65,6 +65,7 @@ collate_factory_train={
 	'DANN_kbert': None,
 	'DANN_kroberta': None,
 	'SSL_kbert': kbert_ssl_collate_fn_3,
+	'SSL_kroberta': kbert_ssl_collate_fn_3,
 	'SSL_kbert_DANN': kbert_ssl_collate_fn_3,
 	'masked_SSL_kbert': None,
 	'masked_SSL_kroberta': None
@@ -80,6 +81,7 @@ collate_factory_eval={
 	'DANN_kbert': None,
 	'DANN_kroberta': None,
 	'SSL_kbert': kbert_two_stage_collate_fn,
+	'SSL_kroberta': kbert_two_stage_collate_fn,
 	'SSL_kbert_DANN': kbert_two_stage_collate_fn,
 	'masked_SSL_kbert': kbert_two_stage_collate_fn,
 	'masked_SSL_kroberta': kbert_two_stage_collate_fn

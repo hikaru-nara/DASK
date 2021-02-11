@@ -752,6 +752,72 @@ class SSL_kbert(nn.Module):
 			return pivot_preds
 
 
+class SSL_kroberta(nn.Module):
+	def __init__(self, args):
+		super(SSL_kroberta, self).__init__()
+		# model_config = BertConfig.from_pretrained('./models/pytorch-bert-uncased/bert-base-uncased/bert_config.json')
+		model_config = RobertaConfig.from_pretrained('roberta-base')
+		self.roberta = BertModel(config=model_config, add_pooling_layer=False)
+		# self.kbert = BertModel.from_pretrained('bert-base-uncased', config=model_config)
+		self.labels_num = 2
+		self.classifier = torch.nn.Sequential(
+			nn.Linear(args.hidden_size, args.hidden_size),
+			nn.Dropout(args.dropout),
+			nn.ReLU(),
+			nn.Linear(args.hidden_size, self.labels_num)
+		)
+		# self.decoder = nn.Linear(args.hidden_size, model_config.vocab_size)
+		self.decoder = torch.nn.Sequential(
+			nn.Linear(args.hidden_size, args.hidden_size),
+			nn.Dropout(args.dropout),
+			nn.ReLU(),
+			nn.Linear(args.hidden_size, model_config.vocab_size)
+		)
+		self.pooling = args.pooling
+		self.args = args
+
+	def pooler(self, feature):
+		if self.pooling == "mean":
+			output = torch.mean(feature, dim=1)
+		elif self.pooling == "max":
+			output = torch.max(feature, dim=1)[0]
+		elif self.pooling == "last":
+			output = feature[:, -1, :]
+		else:
+			output = feature[:, 0, :]
+		return output
+
+	def forward(self, kg_input=None, org_input=None, ssl_label=None):
+		"""
+		Args:
+			tokens_kg: [batch_size x seq_length], sentence with knowledge from graph
+			tokens_org: [batch_size x seq_length], sentence without extra knowledge, but contain more part of orginal sentence
+			mask_kg: padding mask for tokens_kg
+			mask_org: padding mask for tokens_org
+			pos: position_id for tokens_kg
+			vm: visible_matrix for tokens_kg
+			output_attention: whether or not to output attention mask for each layer and each attention head
+		"""
+		if kg_input is not None:
+			tokens_kg, mask_kg, pos, vm = kg_input
+			# output_kg = self.kbert(tokens_kg, mask_kg, position_ids=None, visible_matrix=None)[0]
+			output_kg = self.roberta(tokens_kg, mask_kg, position_ids=pos, visible_matrix=vm)[0]
+			logits = self.classifier(self.pooler(output_kg))
+			return logits
+		else:
+			tokens_org, mask_org = org_input
+			assert tokens_org.shape == ssl_label.shape
+			# output_org = self.kbert(tokens_org, mask_org, position_ids=None, visible_matrix=None)[0]
+			output_org = self.roberta(tokens_org, mask_org)[0]
+			output_org = output_org.view(-1, self.args.hidden_size)
+			# print(output_org.shape)
+			pivot_index = (ssl_label.view(-1) > 0).nonzero().view(-1)
+			# print(pivot_index)
+			output_pivot = torch.index_select(output_org, dim=0, index=pivot_index)
+			pivot_preds = self.decoder(output_pivot)
+			return pivot_preds
+
+
 class SSL_kbert_DANN(nn.Module):
 	def __init__(self, args):
 		super(SSL_kbert_DANN, self).__init__()
@@ -959,6 +1025,7 @@ model_factory = {
 				'DANN_kbert': DANN_kbert,
 				'DANN_kroberta': DANN_kroberta,
 				'SSL_kbert': SSL_kbert,
+				'SSL_kroberta': SSL_kroberta,
 				'SSL_kbert_DANN': SSL_kbert_DANN,
 				'masked_SSL_kbert': masked_SSL_kbert,
 				'masked_SSL_kroberta': masked_SSL_kroberta
