@@ -395,9 +395,11 @@ class DA_Dataset(torch.utils.data.Dataset):
         labeled_tgt = self.target_data['labeled']
 
         len_dev = len(labeled_src['text'])
+
         # inds = list(range(len_dev))
         # random.shuffle(inds)
         # labeled_src = {k:[labeled_src[k][i] for i in inds] for k in labeled_src.keys()}
+
         dev_data = {k:labeled_src[k][len_dev//5*4:] for k in labeled_src.keys()}
         train_labeled = {k:labeled_src[k][:len_dev//5*4] for k in labeled_src.keys()}
         return DA_train_dataset(train_labeled, unlabeled, self.max_seq_length, self.kg, self.model_name), \
@@ -764,7 +766,10 @@ if __name__ == '__main__':
     # vocab = Vocab()
     # vocab.load(args.vocab_path)
     # args.vocab = vocab
+<<<<<<< Updated upstream
     # exit()
+=======
+>>>>>>> Stashed changes
     # source_reader = reader_factory['bdek']('books','source')
     # target_reader = reader_factory['bdek']('kitchen','target')
 
@@ -787,6 +792,7 @@ if __name__ == '__main__':
     # print(tokens)
     # nltk.download('punkt')
     from transformers import BertTokenizer
+<<<<<<< Updated upstream
     from transformers import RobertaTokenizer
     # t = BertTokenizer.from_pretrained('bert-base-uncased')
     t = RobertaTokenizer.from_pretrained('roberta-base')
@@ -807,3 +813,26 @@ if __name__ == '__main__':
             print(labeled_batch['vm'][0][90:107,90:107])
             print(labeled_batch['pos'][0])
             # break
+=======
+    t = BertTokenizer.from_pretrained('bert-base-uncased')
+    print('trainloader')
+    for i, (labeled_batch,unlabeled_batch) in enumerate(train_loader):
+        print(labeled_batch.keys())
+        print(i)
+        print(labeled_batch['text'][0])
+        print(labeled_batch['label'][0])
+        print(labeled_batch['tokens'][0])
+        print(labeled_batch['mask'][0])
+        if i==10:
+            break
+    print('test loader')
+    for i, labeled_batch in enumerate(eval_loader):
+        print(labeled_batch.keys())
+        print(i)
+        print(labeled_batch['text'][0])
+        print(labeled_batch['label'][0])
+        print(labeled_batch['tokens'][0])
+        print(labeled_batch['mask'][0])
+        if i==10:
+            break
+>>>>>>> Stashed changes
