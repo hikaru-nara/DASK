@@ -27,6 +27,9 @@ class confidenceFilter(defaultGraphFilter):
 		self.filtermethod = "conf"
 		self.conf_thres = args.filter_conf
 
+	def filtername(self, gp):
+		return gp + "_conf{}".format(self.conf_thres) 
+
 	def filter_(self, gp, fp):
 		with open(gp, 'r', encoding='utf-8') as f:
 			with open(fp, 'w') as g:
