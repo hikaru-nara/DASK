@@ -1,5 +1,5 @@
 from utils.utils import extract_word_freq, sentiment_score_init
-from transformers import BertTokenizer
+from transformers import BertTokenizer, RobertaTokenizer
 import os
 import pickle as pkl
 from nltk.tokenize import word_tokenize
@@ -21,7 +21,10 @@ class MemoryBank(object):
 		self.curr_steps = 1
 		self.update_freq = True
 		self.pivots = []
-		self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+		if 'roberta' in args.model_name:
+			self.tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
+		else:	
+			self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 		self.alpha = args.update_rate
 		self.conf_threshold = args.confidence_threshold
 		self.update_times = {'source':0, 'target':0}
@@ -115,6 +118,7 @@ class MemoryBank(object):
 		for p in self.pivots:
 			if not p in self.pivot2token:
 				self.pivot2token[p] = self.tokenizer.encode(p, add_special_tokens=False)
+				self.pivot2token[' '+p] = self.tokenizer.encode(' '+p, add_special_tokens=False)
 		# self.pivots = set(self.pivots)
 		# assert 'originally' in self.pivot2token
 

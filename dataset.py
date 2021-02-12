@@ -189,7 +189,7 @@ def SSL_preprocess(datum, max_seq_length, memory_bank, tokenizer):
     # add [MASK] tag
     for i, l in enumerate(ssl_label):
         if l > 0:
-            tokens[i] = tokenizer.encode(MASK_TOKEN)[1] # [101, 103, 102] or [0,50264,2]
+            tokens[i] = MASK_ID 
     datum['tokens_org'] = tokens
     datum['ssl_label'] = ssl_label
     return datum
@@ -209,7 +209,7 @@ def Masked_SSL_preprocess(datum, max_seq_length, memory_bank, tokenizer):
     # add [MASK] tag
     for i, l in enumerate(ssl_label):
         if l > 0:
-            tokens[i] = tokenizer.encode(MASK_TOKEN)[1] # [101, 103, 102] or [0,50264,2]
+            tokens[i] = MASK_ID 
     datum['tokens_mask'] = np.array(tokens)
     datum['ssl_label'] = np.array(ssl_label)
     datum['src_pos'] = np.array(datum['src_pos'])
@@ -765,11 +765,7 @@ if __name__ == '__main__':
         train_dataset, dev_dataset, eval_dataset = dataset.split()
     # vocab = Vocab()
     # vocab.load(args.vocab_path)
-    # args.vocab = vocab
-<<<<<<< Updated upstream
-    # exit()
-=======
->>>>>>> Stashed changes
+
     # source_reader = reader_factory['bdek']('books','source')
     # target_reader = reader_factory['bdek']('kitchen','target')
 
@@ -792,11 +788,10 @@ if __name__ == '__main__':
     # print(tokens)
     # nltk.download('punkt')
     from transformers import BertTokenizer
-<<<<<<< Updated upstream
     from transformers import RobertaTokenizer
     # t = BertTokenizer.from_pretrained('bert-base-uncased')
     t = RobertaTokenizer.from_pretrained('roberta-base')
-    for i, (labeled_batch,src_unlabeled_batch) in enumerate(train_loader):
+    for i, (labeled_batch,src_unlabeled_batch,_) in enumerate(train_loader):
 
         
         # print('unlabeled')
@@ -809,30 +804,33 @@ if __name__ == '__main__':
             print(i)
             print('labeled')
             print(labeled_batch['text'][0])
-            print(t.decode(labeled_batch['tokens'][0][90:107]))
-            print(labeled_batch['vm'][0][90:107,90:107])
-            print(labeled_batch['pos'][0])
+            print(t.decode(labeled_batch['tokens_mask'][0]))
+            print(labeled_batch['ssl_label'][0])
+            print(labeled_batch['tokens_mask'][0])
+            print(labeled_batch['tokens_mask'][0][labeled_batch['ssl_label'][0]>0])
+            # print(labeled_batch['vm'][0][90:107,90:107])
+            # print(labeled_batch['pos'][0])
             # break
-=======
-    t = BertTokenizer.from_pretrained('bert-base-uncased')
-    print('trainloader')
-    for i, (labeled_batch,unlabeled_batch) in enumerate(train_loader):
-        print(labeled_batch.keys())
-        print(i)
-        print(labeled_batch['text'][0])
-        print(labeled_batch['label'][0])
-        print(labeled_batch['tokens'][0])
-        print(labeled_batch['mask'][0])
-        if i==10:
-            break
-    print('test loader')
-    for i, labeled_batch in enumerate(eval_loader):
-        print(labeled_batch.keys())
-        print(i)
-        print(labeled_batch['text'][0])
-        print(labeled_batch['label'][0])
-        print(labeled_batch['tokens'][0])
-        print(labeled_batch['mask'][0])
-        if i==10:
-            break
->>>>>>> Stashed changes
+# =======
+#     t = BertTokenizer.from_pretrained('bert-base-uncased')
+#     print('trainloader')
+#     for i, (labeled_batch,unlabeled_batch) in enumerate(train_loader):
+#         print(labeled_batch.keys())
+#         print(i)
+#         print(labeled_batch['text'][0])
+#         print(labeled_batch['label'][0])
+#         print(labeled_batch['tokens'][0])
+#         print(labeled_batch['mask'][0])
+#         if i==10:
+#             break
+#     print('test loader')
+#     for i, labeled_batch in enumerate(eval_loader):
+#         print(labeled_batch.keys())
+#         print(i)
+#         print(labeled_batch['text'][0])
+#         print(labeled_batch['label'][0])
+#         print(labeled_batch['tokens'][0])
+#         print(labeled_batch['mask'][0])
+#         if i==10:
+#             break
+# >>>>>>> Stashed changes
