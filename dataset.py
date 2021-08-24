@@ -319,13 +319,13 @@ class DA_train_dataset(torch.utils.data.Dataset):
         # self.augmenter = augmenter
 
     def __len__(self):
-        # return max(self.len_labeled, self.len_unlabeled)
-        return self.len_labeled
+        return max(self.len_labeled, self.len_unlabeled)
+        # return self.len_labeled
 
     def __getitem__(self, i):
-        # assert self.len_labeled<self.len_unlabeled
-        # l_ind = i*self.len_labeled//self.len_unlabeled
-        l_ind = i
+        assert self.len_labeled<self.len_unlabeled
+        l_ind = i*self.len_labeled//self.len_unlabeled
+        # l_ind = i
 
         labeled_datum = {k: self.labeled_data[k][l_ind] for k in self.labeled_data.keys()}
 
@@ -396,9 +396,9 @@ class DA_Dataset(torch.utils.data.Dataset):
 
         len_dev = len(labeled_src['text'])
 
-        # inds = list(range(len_dev))
-        # random.shuffle(inds)
-        # labeled_src = {k:[labeled_src[k][i] for i in inds] for k in labeled_src.keys()}
+        inds = list(range(len_dev))
+        random.shuffle(inds)
+        labeled_src = {k:[labeled_src[k][i] for i in inds] for k in labeled_src.keys()}
 
         dev_data = {k:labeled_src[k][len_dev//5*4:] for k in labeled_src.keys()}
         train_labeled = {k:labeled_src[k][:len_dev//5*4] for k in labeled_src.keys()}

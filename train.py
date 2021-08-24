@@ -354,12 +354,14 @@ if __name__=='__main__':
 		# 	best_test_acc = test_acc
 		# 	logger.info('=> saving checkpoint to {}'.format(args.log_dir))
 		# 	torch.save(model.state_dict(), os.path.join(args.log_dir, 'model_best.pth'))
+		if dev_acc > best_dev_acc:
+			best_dev_acc = dev_acc
 		if test_acc>best_test_acc:
 			# best_dev_acc = dev_acc
 			best_test_acc = test_acc
 			logger.info('=> saving checkpoint to {}'.format(args.log_dir))
 			torch.save(model.state_dict(), os.path.join(args.log_dir, 'model_best.pth'))
-		# logger.info('Best dev Accuracy is {0:.4f}'.format(best_dev_acc))
+		logger.info('Best dev Accuracy is {0:.4f}'.format(best_dev_acc))
 		logger.info('Best test Accuracy is {0:.4f}'.format(best_test_acc))
 
 	
