@@ -497,8 +497,6 @@ class BertModel(nn.Module):
     def __init__(self, config, add_pooling_layer=True):
         super().__init__()
         self.config = config
-        print('bert config')
-        print(self.config)
         self.embeddings = BertEmbeddings(config)
         self.encoder = BertEncoder(config)
 
@@ -623,8 +621,6 @@ class BertModel(nn.Module):
             embedding_output = self.embeddings(
                 input_ids=input_ids, position_ids=position_ids, token_type_ids=token_type_ids, inputs_embeds=inputs_embeds
             )
-        # print('only_first_vm')
-        # print(only_first_vm)
         encoder_outputs = self.encoder(
             embedding_output,
             attention_mask=extended_attention_mask,
@@ -713,6 +709,6 @@ class BertModel(nn.Module):
         # Since we are adding it to the raw scores before the softmax, this is
         # effectively the same as removing these entirely.
         # extended_attention_mask = extended_attention_mask.to(dtype=self.dtype)  # fp16 compatibility
-        extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
+        extended_attention_mask = (1.0 - extended_attention_mask) * -1e10
         return extended_attention_mask
 

@@ -36,6 +36,7 @@ torch.multiprocessing.set_sharing_strategy('file_system')
 if __name__=='__main__':
 	parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
+	parser.add_argument('--debug', action='store_true')
 	# Path options.
 	parser.add_argument("--pretrained_model_path", default=None, type=str,
 						help="Path of the pretrained model.")
@@ -149,6 +150,7 @@ if __name__=='__main__':
 	parser.add_argument('--continuity_lambda', type=float, default=5)
 	parser.add_argument('--diff_lambda', type=float, default=10, help='lambda balance term in loss')
 	parser.add_argument('--filter_conf', type=float, default=0.1, help='confidence threshold')
+	parser.add_argument('--refilter', action='store_true')
 
 	# DA
 	parser.add_argument('--source', type=str, help='if use bdek dataset, specify with bdek.domain, e.g.\
@@ -234,6 +236,8 @@ if __name__=='__main__':
 	collate_fn_train = collate_factory_train[args.model_name]
 	collate_fn_eval = collate_factory_eval[args.model_name]
 	train_sampler = torch.utils.data.RandomSampler(train_dataset)
+	if args.debug:
+		args.num_workers = 0
 	train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, num_workers=args.num_workers, \
 											    sampler=train_sampler, collate_fn=collate_fn_train, drop_last=True)
 	dev_loader = torch.utils.data.DataLoader(dev_dataset, batch_size=args.batch_size, num_workers=args.num_workers, collate_fn=collate_fn_eval)

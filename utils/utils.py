@@ -23,7 +23,7 @@ import numpy as np
 import scipy
 import math
 from pathlib import Path
-import unidecode
+# import unidecode
 import pickle
 import pandas as pd
 from nltk.tokenize import word_tokenize
@@ -180,15 +180,15 @@ def save_fail_cases(logits, labels, attentions, text, pos, tokens, log_dir):
 
 
 
-def standardize(word):
-    word = unidecode.unidecode(word)
-    print('standardize')
-    print(word)
-    result = word.strip('\'')
-    tmp=result.find('\'')
-    if tmp!=-1:
-        result = result[:tmp]
-    return result
+# def standardize(word):
+#     word = unidecode.unidecode(word)
+#     print('standardize')
+#     print(word)
+#     result = word.strip('\'')
+#     tmp=result.find('\'')
+#     if tmp!=-1:
+#         result = result[:tmp]
+#     return result
 
 def pollute_data(t, y, pollution):
     """

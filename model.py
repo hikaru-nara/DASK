@@ -169,6 +169,11 @@ class BertClassifier(nn.Module):
 			label: [batch_size]
 			mask: [batch_size x seq_length]
 		"""
+		# print('172 model')
+		# print(src)
+		# print(mask)
+		# print(pos)
+		# print(vm)
 		if output_attention:
 			outputs = self.bert(src, mask, position_ids=pos, visible_matrix=vm, output_attentions=output_attention, only_first_vm=only_first_vm)
 			output, _, all_attentions = outputs[0], outputs[1], outputs[2]

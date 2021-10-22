@@ -34,6 +34,11 @@ class airlines_reader(object):
         assert source_or_target=='source' or source_or_target=='target'
         self.domain_label = int(source_or_target=='target')
 
+    def split_label_unlabeled(self):
+        table = pd.read_csv(self.orig_path)
+        print(table.columns)
+        exit()
+
     def read_data(self):
         '''
         major read data procedure; called from da_dataset

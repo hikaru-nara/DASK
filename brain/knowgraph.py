@@ -9,7 +9,7 @@ from brain.config import MAX_ENTITIES
 # import fairseq.data.encoder.gpt2_bpe as gpt2_bpe
 # import wrapper_tokenizer as wt
 import numpy as np
-from utils.utils import standardize
+# from utils.utils import standardize
 from uer.utils import *
 from transformers import BertTokenizer, RobertaTokenizer
 import re

@@ -129,23 +129,27 @@
     # --config_path ./models/google_config.json \
     # --vocab_path ./models/pytorch-bert-uncased/vocab.txt \
 #Pbert
-# CUDA_VISIBLE_DEVICES='0,1,2,3,4,6' python train.py \
-#     --source bdek.dvd \
-#     --target bdek.books \
-#     --model_name base_DA \
-#     --task domain_adaptation \
-#     --epochs_num 10 --batch_size 32 \
-#     --kg_path data/results/db_org \
-#     --log_dir log/AB_Pbert_0210_b1 \
-#     --seq_length 256 \
-#     --learning_rate 2e-5 \
-#     --pooling first \
-#     --num_workers 24 \
-#     --print_freq 100 \
-#     --pretrained_model_path ./models/pytorch-bert-uncased/pytorch_model.bin \
-#     --min_occur 10 \
-#     --use_kg \
-#     --balanced_interval 1
+CUDA_VISIBLE_DEVICES='0' python train.py \
+    --source bdek.books \
+    --target bdek.electronics \
+    --model_name base_DA \
+    --task domain_adaptation \
+    --epochs_num 200 --batch_size 32 \
+    --kg_path data/results/be_org \
+    --log_dir log/BE_Pbert_1019_b1 \
+    --seq_length 256 \
+    --learning_rate 2e-5 \
+    --pooling first \
+    --num_workers 24 \
+    --print_freq 100 \
+    --pretrained_model_path ./models/bert-base-uncased/pytorch_model.bin \
+    --min_occur 10 \
+    --use_kg \
+    --balanced_interval 1 \
+    --filter conf_uncased \
+    --filter_conf 0.2 \
+    --refilter
+
 
     # --kg_path data/amazon-review-old/books/unlabeled_graph.spo \
 
@@ -221,31 +225,31 @@
 #     --update_rate 2e-4
 
 # masked ssl proberta
-CUDA_VISIBLE_DEVICES='0,1,2,3,4,5,6,7' python train.py \
-    --source bdek.electronics \
-    --target bdek.books \
-    --model_name masked_SSL_kroberta \
-    --task masked_DA_SSL \
-    --epochs_num 10 --batch_size 32 \
-    --kg_path data/results/eb_org \
-    --log_dir log/EB_PbertSSL_r_0211_b5_u2e-4_l0.3w0.1_wd1e-4_f0.40_lr2e-5 \
-    --seq_length 256 \
-    --learning_rate 2e-5 \
-    --pooling first \
-    --num_workers 32 \
-    --print_freq 100 \
-    --pretrained_model_path ./models/pytorch-roberta-base/pytorch_model.bin \
-    --min_occur 10 \
-    --ssl_warmup 0.1 \
-    --lambda_ssl 0.3 \
-    --use_kg \
-    --balanced_interval 5 \
-    --filter_conf 0.40 \
-    --filter conf \
-    --weight_decay 0.0001 \
-    --update \
-    --update_rate 0.0002 \
-    --update_steps 10
+# CUDA_VISIBLE_DEVICES='0' python train.py \
+#     --source bdek.electronics \
+#     --target bdek.books \
+#     --model_name masked_SSL_kbert \
+#     --task masked_DA_SSL \
+#     --epochs_num 10 --batch_size 32 \
+#     --kg_path data/results/eb_org \
+#     --log_dir log/EB_PbertSSL_r_0211_b5_u2e-4_l0.3w0.1_wd1e-4_f0.40_lr2e-5 \
+#     --seq_length 256 \
+#     --learning_rate 2e-5 \
+#     --pooling first \
+#     --num_workers 32 \
+#     --print_freq 100 \
+#     --pretrained_model_path ./models/bert-base-uncased/pytorch_model.bin \
+#     --min_occur 10 \
+#     --ssl_warmup 0.1 \
+#     --lambda_ssl 0.3 \
+#     --use_kg \
+#     --balanced_interval 5 \
+#     --filter_conf 0.40 \
+#     --filter conf \
+#     --weight_decay 0.0001 \
+#     --update \
+#     --update_rate 0.0002 \
+#     --update_steps 10
 
 # Pbert eval
 # CUDA_VISIBLE_DEVICES='2,5' python evaluate.py \

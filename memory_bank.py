@@ -125,7 +125,6 @@ class MemoryBank(object):
 	def update(self, sentences, pred_labels, pred_confidence, source_or_target='source', step=False):
 		'''
 		update the memory bank per $self.update_steps
-		考虑是否加新词；如果加的话还要再maintain一个frequency list
 		also update frequent words
 		TODO: high confidence
 		'''

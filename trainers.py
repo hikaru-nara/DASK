@@ -558,6 +558,12 @@ class base_DA_Trainer(object):
 			else:
 				# optimizers.step(sentim_loss)
 				pass
+			# if self.args.update:
+			# 	_, pred_labels2, conf2 = accuracy(logits2.detach().cpu().numpy(), None, True)
+			# 	_, pred_labels3, conf3 = accuracy(logits3.detach().cpu().numpy(), None, True)
+			# 	self.memory_bank.update(labeled_batch['text'], pred_labels1, conf1, 'source', step=False)
+			# 	self.memory_bank.update(src_unlabeled_batch['text'], pred_labels2, conf2, 'source', step=False)
+			# 	self.memory_bank.update(tgt_unlabeled_batch['text'], pred_labels3, conf3, 'target', step=True)
 
 			end_time = time.time()
 			time_meter.update(end_time-start_time)

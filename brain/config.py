@@ -1,30 +1,38 @@
 import os
 
-
-FILE_DIR_PATH = os.path.dirname(os.path.abspath(__file__))
-
-KGS = {
-    'HowNet': os.path.join(FILE_DIR_PATH, 'kgs/HowNet.spo'),
-    'CnDbpedia': os.path.join(FILE_DIR_PATH, 'kgs/CnDbpedia.spo'),
-    'Medical': os.path.join(FILE_DIR_PATH, 'kgs/Medical.spo'),
-}
-
 MAX_ENTITIES = 2
 
-# Special token words.
+# bert Special token ids.
+PAD_ID = 0
+UNK_ID = 100
+CLS_ID = 101
+SEP_ID = 102
+MASK_ID = 103
+
+# bert Special token words.
 PAD_TOKEN = '[PAD]'
 UNK_TOKEN = '[UNK]'
 CLS_TOKEN = '[CLS]'
 SEP_TOKEN = '[SEP]'
 MASK_TOKEN = '[MASK]'
-ENT_TOKEN = '[ENT]'
-SUB_TOKEN = '[SUB]'
-PRE_TOKEN = '[PRE]'
-OBJ_TOKEN = '[OBJ]'
 
-# NEVER_SPLIT_TAG = [
-#     PAD_TOKEN, UNK_TOKEN, CLS_TOKEN, SEP_TOKEN, MASK_TOKEN,
-#     ENT_TOKEN, SUB_TOKEN, PRE_TOKEN, OBJ_TOKEN
-# ]
 
-POS_SET = ['ADJ', 'ADP', 'ADV', 'CONJ', 'DET', 'NOUN', 'NUM', 'PRT', 'PRON', 'VERB', '.', 'X']
+NEVER_SPLIT_TAG = [
+    PAD_TOKEN, UNK_TOKEN, CLS_TOKEN, SEP_TOKEN, MASK_TOKEN
+]
+def initialize_constant(model_name):
+    if 'roberta' == model_name:
+        # Special token ids.
+        global PAD_ID, UNK_ID, SEP_ID, MASK_ID, PAD_TOKEN, UNK_TOKEN, CLS_TOKEN, SEP_TOKEN, MASK_TOKEN
+        PAD_ID = 1
+        UNK_ID = 3
+        CLS_ID = 0
+        SEP_ID = 2
+        MASK_ID = 50264
+
+        # Special token words.
+        PAD_TOKEN = '<pad>'
+        UNK_TOKEN = '<unk>'
+        CLS_TOKEN = '<s>'
+        SEP_TOKEN = '</s>'
+        MASK_TOKEN = '<mask>'

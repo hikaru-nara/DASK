@@ -3,10 +3,9 @@ from os.path import join
 import random
 # import scipy.sparse as sp
 # from gensim.corpora import Dictionary as gensim_dico
-from brain.knowgraph import KnowledgeGraph
-# from brain.config import *
-from uer.utils import *
-from utils.utils import standardize, is_in
+from brain import KnowledgeGraph
+from brain.config import *
+from utils.utils import is_in
 import operator
 import re
 # import xml.etree.ElementTree as ET
@@ -18,45 +17,6 @@ import math
 import torch
 from numpy.random import default_rng
 import time
-
-# from augmentor import augment_factory
-
-nltk.download('averaged_perceptron_tagger')
-nltk.download('wordnet')
-
-
-def create_linear_semantic_tree(kg, datum, vocab):
-    # get semantic tree (i.e. token_list), position embedding and visible matrices
-    text = datum['text']
-    token_list, position_list, visible_matrix, _ = kg.add_knowledge_with_vm(text)
-    # note that this vocab is not necessarily the same as is used in kg.tokenizer
-    token_list = [CLS_TOKEN] + token_list[:-1]
-    token_ids = np.array([vocab.get(t) for t in token_list])
-    # print('dataset/createtree')
-    # print(datum['text'])
-    # print(token_list)
-    # print(token_ids)
-    # print(token_ids)
-    mask = np.array([1 if t != PAD_TOKEN else 0 for t in token_list])
-    position_array = np.array(position_list)
-    datum['token'], datum['mask'], datum['pos'], datum['vm'] = token_ids, mask, position_array, visible_matrix
-    return datum
-
-
-# def bert_preprocess(datum, vocab, max_seq_length, tokenizer):
-#     tokens = [int(t) for t in tokenizer.encode(datum['text'])]
-#     # print(datum.keys())
-#     new_datum = {}
-#     if 'label' in datum.keys():
-#         new_datum['label']=datum['label']
-#     new_datum['tokens'] = ([vocab.CLS_TOKEN_ID] + tokens + [vocab.SEP_TOKEN_ID])[:max_seq_length]
-#     new_datum['mask'] = [1 for _ in range(len(new_datum['tokens']))]
-#     padding_len = max_seq_length - len(new_datum['tokens'])
-#     mask_padding = [0 for _ in range(padding_len)]
-#     token_padding = [vocab.PAD_TOKEN_ID for _ in range(padding_len)]
-#     new_datum['tokens'].extend(token_padding)
-#     new_datum['mask'].extend(mask_padding)
-#     return {key:torch.tensor(value) for key, value in new_datum.items()}
 
 def padding_batch(batch_data, seq_length):
     # print(batch_data)
@@ -130,33 +90,10 @@ def collate_fn_SSL_train(data_list):
 
 
 def bert_preprocess(datum, max_seq_length, tokenizer):
-    # print(datum.keys())
-    # print(datum)
-    # tokens = tokenizer.encode('[CLS]' + datum['text'] + '[SEP]', max_length=max_seq_length)
     tokens = tokenizer.encode(datum['text'], max_length=max_seq_length, add_special_tokens=True, truncation=True)
     tokens.extend([PAD_ID for _ in range(max_seq_length-len(tokens))])
-    # if len(tokens) > max_seq_length:
-    #     tokens = tokens[:max_seq_length - 1] + [tokens[-1]]
-
     datum['tokens'] = np.array(tokens)
     datum['mask'] = np.array([1 if t!=PAD_ID else 0 for t in datum['tokens']])
-    # if 'aug_text' in datum.keys():
-    #     aug_tokens = tokenizer.encode(datum['aug_text'], max_length=max_seq_length, add_special_tokens=True, truncation=True)
-    #     # if len(tokens) > max_seq_length:
-    #     #     tokens = tokens[:max_seq_length - 1] + [tokens[-1]]
-
-    #     datum['aug_tokens'] = aug_tokens
-    #     datum['aug_mask'] = [1 for _ in range(len(datum['aug_tokens']))]
-    # if len(tokens)<max_seq_length:
-    #     padding_len = max_seq_length - len(datum['tokens'])
-    #     mask_padding = [0 for _ in range(padding_len)]
-    #     token_padding = [PAD_ID for _ in range(padding_len)]
-    #     # print('prepricess')
-    #     # print(datum['tokens'])
-    #     datum['tokens'].extend(token_padding)
-    #     datum['mask'].extend(mask_padding)
-
-    # datum['tokens'], datum['mask'], datum['domain'] = torch.tensor(datum['tokens']), torch.tensor(datum['mask']), torch.tensor['domain']
     return datum
 
 def kbert_preprocess(datum, max_seq_length, kg, return_ssl_mask=False):
@@ -216,93 +153,9 @@ def Masked_SSL_preprocess(datum, max_seq_length, memory_bank, tokenizer):
     return datum
 
 
-
-class Causal_Train_Dataset(torch.utils.data.Dataset):
-    '''
-    @ Tian Li
-    '''
-
-    def __init__(self, train_data, kg, max_seq_length):
-        self.train_data = train_data
-        self.kg = kg
-        self.max_seq_length = max_seq_length
-        self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-
-    def __getitem__(self, i):
-        # 0 ->i
-        datum = {key: value[i] for key, value in self.train_data.items()}
-        if self.kg is None:
-            datum = bert_preprocess(datum, self.max_seq_length, self.tokenizer)
-        else:
-            datum = kbert_preprocess(datum, self.max_seq_length, self.kg)
-        # tree_datum = create_linear_semantic_tree(self.kg, datum, self.vocab)
-        return datum
-
-    def __len__(self):
-        return len(self.train_data['text'])
-
-
-class Causal_Test_Dataset(torch.utils.data.Dataset):
-    '''
-    @ Tian Li
-    '''
-
-    def __init__(self, test_data, kg, max_seq_length):
-        self.test_data = test_data
-        self.kg = kg
-        self.max_seq_length = max_seq_length
-        self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-
-    def __getitem__(self, i):
-        datum = {key: value[i] for key, value in self.test_data.items()}
-        if self.kg is None:
-            datum = bert_preprocess(datum, self.max_seq_length, self.tokenizer)
-        else:
-            datum = kbert_preprocess(datum, self.max_seq_length, self.kg)
-        # tree_datum = create_linear_semantic_tree(self.kg, datum, self.vocab)
-        return datum
-
-    def __len__(self):
-        return len(self.test_data['text'])
-
-
-class Causal_Dataset(object):
-    '''
-    @Tian Li
-    '''
-
-    def __init__(self, args, data_reader, graph_path=None, vocab=None, predicate=True):
-        self.train_data, self.dev_data = data_reader.read_data()
-        self.vocab = vocab
-        if args.use_kg:
-            self.kg = KnowledgeGraph(args, graph_path, predicate=predicate, vocab=self.vocab)
-        else:
-            self.kg = None
-        self.args = args
-        # self.kg=None
-
-    def split(self):
-        pos_idx = np.where(self.dev_data['label'] > 0.)[0]
-        neg_idx = np.where(self.dev_data['label'] == 0.)[0]
-
-        dev_idx = np.concatenate(
-            [pos_idx[0:len(pos_idx) // 2], neg_idx[0:len(neg_idx) // 2]],
-            axis=0
-        ).astype(np.int32)  # dev_idx is now discarded
-        test_idx = np.concatenate(
-            [pos_idx[len(pos_idx) // 2:], neg_idx[len(neg_idx) // 2:]],
-            axis=0
-        ).astype(np.int32)
-
-        dev_data = {key: [value[i] for i in dev_idx] for key, value in self.dev_data.items()}
-        test_data = {key: [value[i] for i in test_idx] for key, value in self.dev_data.items()}
-        return Causal_Train_Dataset(self.train_data, self.kg, self.args.seq_length), \
-        Causal_Test_Dataset(dev_data, self.kg,self.args.seq_length), Causal_Test_Dataset(test_data, self.kg,self.args.seq_length)
-
-
 class DA_train_dataset(torch.utils.data.Dataset):
     # incomplete
-    def __init__(self, labeled_data, unlabeled_data, max_seq_length, kg, model_name='bert'):
+    def __init__(self, labeled_data, unlabeled_data, max_seq_length, kg, model_name='bert', debug=False):
         super(DA_train_dataset, self).__init__()
         self.labeled_data = labeled_data
         self.unlabeled_data = unlabeled_data
@@ -315,8 +168,8 @@ class DA_train_dataset(torch.utils.data.Dataset):
         elif model_name == 'roberta':
             self.tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
         self.kg = kg
+        self.debug = debug
         
-        # self.augmenter = augmenter
 
     def __len__(self):
         return max(self.len_labeled, self.len_unlabeled)
@@ -328,22 +181,34 @@ class DA_train_dataset(torch.utils.data.Dataset):
         # l_ind = i
 
         labeled_datum = {k: self.labeled_data[k][l_ind] for k in self.labeled_data.keys()}
+        if self.debug:
+            # labeled_datum['text'] = 'Repulsive We have to do better than this'
+            print(labeled_datum)
 
         if self.kg is None:
             labeled_datum = bert_preprocess(labeled_datum, self.max_seq_length, self.tokenizer)
         else:
             labeled_datum = kbert_preprocess(labeled_datum, self.max_seq_length, self.kg)
+        if self.debug:
+            print(labeled_datum.keys())
+            for k in labeled_datum:
+                print(k)
+                print(labeled_datum[k])
+                if k == 'tokens':
+                    print(self.tokenizer.decode(labeled_datum[k]))
+            input()
         unlabeled_datum = {k: self.unlabeled_data[k][i] for k in self.unlabeled_data.keys()}
         if self.kg is None:
             unlabeled_datum = bert_preprocess(unlabeled_datum, self.max_seq_length, self.tokenizer)
         else:
             unlabeled_datum = kbert_preprocess(unlabeled_datum, self.max_seq_length, self.kg)
+        
         return labeled_datum, unlabeled_datum
 
 
 class DA_test_dataset(torch.utils.data.Dataset):
     # incomplete
-    def __init__(self, labeled_data, max_seq_length, kg, model_name='bert'):
+    def __init__(self, labeled_data, max_seq_length, kg, model_name='bert', debug=False):
         super(DA_test_dataset, self).__init__()
         self.labeled_data = labeled_data
         self.max_seq_length = max_seq_length
@@ -386,6 +251,7 @@ class DA_Dataset(torch.utils.data.Dataset):
         else:
             self.kg = None
         self.model_name = 'roberta' if 'roberta' in args.model_name else 'bert'
+        self.debug = args.debug
         print('modelname dataset: ', self.model_name)
 
     def split(self):
@@ -402,9 +268,9 @@ class DA_Dataset(torch.utils.data.Dataset):
 
         dev_data = {k:labeled_src[k][len_dev//5*4:] for k in labeled_src.keys()}
         train_labeled = {k:labeled_src[k][:len_dev//5*4] for k in labeled_src.keys()}
-        return DA_train_dataset(train_labeled, unlabeled, self.max_seq_length, self.kg, self.model_name), \
-                DA_test_dataset(dev_data, self.max_seq_length, self.kg, self.model_name), \
-                DA_test_dataset(labeled_tgt, self.max_seq_length, self.kg, self.model_name)
+        return DA_train_dataset(train_labeled, unlabeled, self.max_seq_length, self.kg, self.model_name, debug=self.debug), \
+                DA_test_dataset(dev_data, self.max_seq_length, self.kg, self.model_name, debug=self.debug), \
+                DA_test_dataset(labeled_tgt, self.max_seq_length, self.kg, self.model_name, debug=self.debug)
 
 
 class DA_SSL_train_dataset(torch.utils.data.Dataset):
@@ -420,7 +286,9 @@ class DA_SSL_train_dataset(torch.utils.data.Dataset):
         self.su_len = len(self.source_unlabeled['text'])
         self.tu_len = len(self.target_unlabeled['text'])
         self.length = max(self.su_len, self.tu_len)
+        print('get tokenizer 334')
         self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+        print('got tokenizer 336')
 
     def __len__(self):
         return self.length 
@@ -469,7 +337,9 @@ class DA_SSL_eval_dataset(torch.utils.data.Dataset):
         self.max_seq_length = max_seq_length
         self.kg = kg
         self.memory_bank = memory_bank
+        print('get tokenizer 384')
         self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+        print('got tokenizer 386')
 
     def __len__(self):
         return len(self.labeled['text'])
@@ -624,59 +494,14 @@ class Masked_DA_SSL_dataset(torch.utils.data.Dataset):
                 Masked_DA_SSL_eval_dataset(labeled_tgt, self.max_seq_length, self.kg, self.memory_bank)
 
 
-
-num_regex = re.compile('^[+-]?[0-9]+\.?[0-9]*$')
-
-
-def create_vocab(sentence_list, vocab_size=10000):
-    '''
-    sentence_list: tokenized sentence list
-    '''
-    print('Creating vocab ...')
-
-    total_tokens, unique_tokens = 0, 0
-    token_freqs = {}
-
-    for sent in sentence_list:
-        # words = line.split()
-        for token in sent:
-            # if skip_len > 0 and len(words) > skip_len:
-            #     continue
-
-            # for w in words:
-            if not bool(num_regex.match(token)):
-                try:
-                    token_freqs[token] += 1
-                except KeyError:
-                    unique_tokens += 1
-                    token_freqs[token] = 1
-                total_tokens += 1
-        # fin.close()
-
-    print('  %i total tokens, %i unique tokens' % (total_tokens, unique_tokens))
-    sorted_token_freqs = sorted(token_freqs.items(), key=operator.itemgetter(1), reverse=True)
-    vocab = {'<pad>': 0, '<unk>': 1, '<num>': 2}
-    index = len(vocab)
-    for token, _ in sorted_token_freqs:
-        vocab[token] = index
-        index += 1
-        if vocab_size > 0 and index > vocab_size + 2:
-            break
-    print(' keep the top %i words' % vocab_size)
-
-    return vocab
-
-
-dataset_factory = {'causal_inference': Causal_Dataset,
-                   'sentim': Causal_Dataset,
-                   'domain_adaptation': DA_Dataset,
+dataset_factory = {'domain_adaptation': DA_Dataset,
                    'DA_SSL': DA_SSL_dataset,
                    'masked_DA_SSL': Masked_DA_SSL_dataset}
 
 if __name__ == '__main__':
     from utils.readers import reader_factory
-    # from utils.vocab import Vocab
-    from collate_fn import collate_factory_train, collate_factory_eval
+    # # from utils.vocab import Vocab
+    # from collate_fn import collate_factory_train, collate_factory_eval
     from memory_bank import MemoryBank
     import argparse
 
@@ -716,9 +541,6 @@ if __name__ == '__main__':
     # args.kg_path = ['data/results/books_labeled_org']
 
     args.pollution_rate = [0.7,0.9]
-
-    
-    print(PAD_ID)
     if args.task == 'domain_adaptation' or args.task=='DA_SSL' or args.task=='masked_DA_SSL':
         source = args.source
         if '.' in source:
@@ -763,18 +585,7 @@ if __name__ == '__main__':
 
         dataset = dataset_factory[args.task](args, data_reader, graph_path=args.kg_path)
         train_dataset, dev_dataset, eval_dataset = dataset.split()
-    # vocab = Vocab()
-    # vocab.load(args.vocab_path)
 
-    # source_reader = reader_factory['bdek']('books','source')
-    # target_reader = reader_factory['bdek']('kitchen','target')
-
-    # dataset = dataset_factory['domain_adaptation'](args, source_reader, target_reader, graph_path=['data/imdb_sub_conceptnet_new.spo'])
-    # # print(dataset.target_data['labeled']['text'][0])
-    # train_dataset, dev_dataset, eval_dataset = dataset.split()
-    # data_reader = reader_factory['imdb']([0.9, 0.7], False)
-    # dataset = dataset_factory['causal_inference'](args, data_reader, graph_path=['data/imdb_sub_conceptnet.spo'])
-    # train_dataset, dev_dataset, eval_dataset = dataset.split()
     collate_fn_eval = collate_factory_eval[args.model_name]
     collate_fn_train = collate_factory_train[args.model_name]
     # train_sampler = torch.utils.data.RandomSampler(train_dataset)
@@ -793,12 +604,6 @@ if __name__ == '__main__':
     t = RobertaTokenizer.from_pretrained('roberta-base')
     for i, (labeled_batch,src_unlabeled_batch,_) in enumerate(train_loader):
 
-        
-        # print('unlabeled')
-        # print(src_unlabeled_batch['text'][0])
-        # print(t.decode(src_unlabeled_batch['tokens'][0]))
-        # print(src_unlabeled_batch['vm'][0][-16:,-16:])
-        # print(src_unlabeled_batch['pos'][0])
         if i==0:
             print(labeled_batch.keys())
             print(i)
@@ -811,26 +616,3 @@ if __name__ == '__main__':
             # print(labeled_batch['vm'][0][90:107,90:107])
             # print(labeled_batch['pos'][0])
             # break
-# =======
-#     t = BertTokenizer.from_pretrained('bert-base-uncased')
-#     print('trainloader')
-#     for i, (labeled_batch,unlabeled_batch) in enumerate(train_loader):
-#         print(labeled_batch.keys())
-#         print(i)
-#         print(labeled_batch['text'][0])
-#         print(labeled_batch['label'][0])
-#         print(labeled_batch['tokens'][0])
-#         print(labeled_batch['mask'][0])
-#         if i==10:
-#             break
-#     print('test loader')
-#     for i, labeled_batch in enumerate(eval_loader):
-#         print(labeled_batch.keys())
-#         print(i)
-#         print(labeled_batch['text'][0])
-#         print(labeled_batch['label'][0])
-#         print(labeled_batch['tokens'][0])
-#         print(labeled_batch['mask'][0])
-#         if i==10:
-#             break
-# >>>>>>> Stashed changes
