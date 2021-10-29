@@ -101,10 +101,10 @@ def kbert_preprocess(datum, max_seq_length, kg, return_ssl_mask=False):
         token_list, position_list, visible_matrix, ssl_vm, abs_src_pos = kg.add_knowledge_with_vm(datum['text'], \
             max_length=max_seq_length, add_special_tokens=True, return_ssl_mask=return_ssl_mask)
     else:
-        token_list, position_list, visible_matrix, _ = kg.add_knowledge_with_vm(datum['text'], \
+        token_list, position_list, visible_matrix, mask = kg.add_knowledge_with_vm(datum['text'], \
             max_length=max_seq_length, add_special_tokens=True, return_ssl_mask=return_ssl_mask)
     # token_list = [CLS_ID] + token_list[:-2] + [SEP_ID]
-    mask = np.array([1 if t != PAD_ID else 0 for t in token_list])
+    # mask = np.array([1 if t != PAD_ID else 0 for t in token_list])
     datum['tokens'] = np.array(token_list)
     datum['pos'] = np.array(position_list)
     datum['vm'] = visible_matrix
@@ -182,7 +182,7 @@ class DA_train_dataset(torch.utils.data.Dataset):
 
         labeled_datum = {k: self.labeled_data[k][l_ind] for k in self.labeled_data.keys()}
         if self.debug:
-            # labeled_datum['text'] = 'Repulsive We have to do better than this'
+            # labeled_datum['text'] = "It doesn't necessarily work."
             print(labeled_datum)
 
         if self.kg is None:
@@ -207,7 +207,6 @@ class DA_train_dataset(torch.utils.data.Dataset):
 
 
 class DA_test_dataset(torch.utils.data.Dataset):
-    # incomplete
     def __init__(self, labeled_data, max_seq_length, kg, model_name='bert', debug=False):
         super(DA_test_dataset, self).__init__()
         self.labeled_data = labeled_data
@@ -286,9 +285,7 @@ class DA_SSL_train_dataset(torch.utils.data.Dataset):
         self.su_len = len(self.source_unlabeled['text'])
         self.tu_len = len(self.target_unlabeled['text'])
         self.length = max(self.su_len, self.tu_len)
-        print('get tokenizer 334')
         self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-        print('got tokenizer 336')
 
     def __len__(self):
         return self.length 
@@ -337,9 +334,7 @@ class DA_SSL_eval_dataset(torch.utils.data.Dataset):
         self.max_seq_length = max_seq_length
         self.kg = kg
         self.memory_bank = memory_bank
-        print('get tokenizer 384')
         self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-        print('got tokenizer 386')
 
     def __len__(self):
         return len(self.labeled['text'])

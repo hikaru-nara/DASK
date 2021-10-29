@@ -168,6 +168,7 @@ loss_factory = {
     'causal': causal_inference_loss,
     'sentim': sentim_loss,
     'base_DA': sentim_loss,
+    'base_kbert': sentim_loss,
     'base_DA_roberta': sentim_loss,
     'kbert_two_stage_sentim': sentim_loss,
     'kbert_two_stage_da': sentim_loss,

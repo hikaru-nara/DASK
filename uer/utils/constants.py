@@ -2,7 +2,7 @@
 from __future__ import unicode_literals
 
 # bert Special token ids.
-PAD_ID = 0
+PAD_ID = 1
 UNK_ID = 100
 CLS_ID = 101
 SEP_ID = 102

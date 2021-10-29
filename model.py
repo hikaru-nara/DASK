@@ -1026,6 +1026,7 @@ model_factory = {
 				'kbert_two_stage_da': KBert_two_stage,
 				'sentim': BertClassifier,
 				'base_DA': BertClassifier,
+				'base_kbert':masked_SSL_kbert,
 				'base_DA_roberta': RobertaClassifier,
 				'DANN_kbert': DANN_kbert,
 				'DANN_kroberta': DANN_kroberta,

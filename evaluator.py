@@ -432,6 +432,7 @@ evaluator_factory = {
         'causal': causal_Evaluator,
         'sentim': sentim_Evaluator,
         'base_DA': sentim_Evaluator,
+        'base_kbert': sentim_Evaluator,
         'base_DA_roberta': sentim_Evaluator,
         'kbert_two_stage_sentim': kbert_two_stage_Evaluator,
         'kbert_two_stage_da': kbert_two_stage_Evaluator,

@@ -2,6 +2,7 @@ import os
 import os.path as osp
 import sys
 import random
+import copy
 import numpy as np 
 from nltk.tokenize import word_tokenize
 from transformers import BertTokenizer
@@ -189,23 +190,6 @@ class SentenceTrunk():
 				print(bun_mask)
 		return vm
 
-# def process_word_list(sentence, word_list, max_length):
-# 	word_list_p = []
-# 	len_word_list = 0
-# 	ind_sent = 0
-# 	ind_word_list = 0
-# 	ind_word = 0
-# 	while len_word_list<=max_length:
-# 		if sentence[ind_sent]=='"':
-# 			ind_sent += 1
-# 			ind_word_list += 1
-# 			ind_word = 0
-# 			word_list_p.append('"')
-# 			continue
-# 		elif sentence[ind_sent]=='\n' or\
-# 			 sentence[ind_sent]==' ':
-			
-
 
 
 class KnowledgeGraph(object):
@@ -254,12 +238,29 @@ class KnowledgeGraph(object):
 							lookup_table[p] = [Triplet(lst)]
 		return lookup_table
 
+	def process_word_list(self,sentence, word_list, max_length):
+		# word_list_copy = copy.deepcopy(word_list)
+		len_lst = len(word_list)
+		i=0
+		while True:
+			if word_list[i] == "n't":
+				if i==0:
+					continue
+				word_list.pop(i)
+				word_list[i-1] = word_list[i-1]+"n't"
+				len_lst-=1
+			else:
+				i+=1
+			if i>=min(len_lst,max_length):
+				break
+		return word_list
+
 	def add_knowledge_with_vm(self, sentence, max_length, **kwargs):
 		if self.debug:
 			print('add_knowledge_with_vm')
 		pivots = self.memory_bank.pivots
 		word_list = word_tokenize(sentence)
-		# word_list = process_word_list(sentence, word_list)
+		word_list = self.process_word_list(sentence, word_list, max_length)
 		trunk = SentenceTrunk()
 		trunk.push_back(BranchBundle(CLS_TOKEN))
 		table_keys = self.lookup_table.keys()
