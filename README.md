@@ -26,9 +26,6 @@ pip install requirements.txt
 * Developer should add new classes to these files to implement new features instead of editting the existing ones.
 * There are several command line args that effect which module to choose from the factories, see the code for details.
 
-## Kindly Note
-
-This Readme may not have covered everything. If anything is unclear, contact me on wechat. Thanks for your collaboration.
 
 
 
